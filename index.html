@@ -183,7 +183,7 @@
   <section id="end" class="screen" hidden>
     <img src="assets/chat_saute.png" alt="Le chat libre">
     <h2>Bravo !</h2>
-    <p>Tu as délivré le chat.<br>Seize étages, et la sorcière est partie.</p>
+    <p>Tu as délivré Mei Mei.<br>Seize étages, et la sorcière est partie.</p>
     <button id="btnEndHome" type="button">Retour à l'accueil</button>
   </section>
 </div>
@@ -217,7 +217,8 @@
     bolt:   { w: 90, h: 20,  mat: 'iron', mass: 1,   rail: 'x' },
     ring:   { w: 44, h: 44,  mat: 'iron', mass: 0.5, chain: true },
     key:    { w: 54, h: 30,  mat: 'iron', mass: 0.5, chain: true },
-    herse:  { w: 180, h: 150, mat: 'iron', mass: 3,  rail: 'y', gravity: true },
+    herse:  { w: 180, h: 150, mat: 'iron', mass: 3,  rail: 'y', gravity: true, blocks: true },
+    gate:   { w: 40, h: 220, mat: 'wood', mass: 99, rail: 'y', blocks: true },
     lever:  { w: 30, h: 90,  mat: 'wood', mass: 1,   rail: 'y', grab: true },
     giant:  { w: 170, h: 64, mat: 'iron', mass: 7,   rail: 'x', pole: 'N' },
   };
@@ -262,6 +263,8 @@
           ko: false, latched: false, hidden: false, consumed: false, hooked: false, pole: null }, k, b);
         if (k.hook && b.hook !== false) body.hooked = true;
         if (body.randomPole) body.pole = Math.random() < 0.5 ? 'N' : 'S';
+        body.spawn = { x: body.x, y: body.y };
+        if (body.patrol) body.patrol = Object.assign({ dir: 1, speed: 80 }, body.patrol);
         if (body.rail) {
           const r = body.rail;
           body.rail = typeof r === 'string' ? { axis: r } : Object.assign({}, r);
@@ -285,6 +288,16 @@
       this.pulls = [];
       this.fingerBlocked = false;
       this.cageOpen = 0;             // 0..1 ouverture de la cage
+      this.failed = false;           // une cloche a sonné : la salle recommence
+      this.objectiveDone = false;    // première partie de la salle réussie (la clé apparaît)
+      this.zoneOff = false;
+    }
+
+    // Tout ce qui arrête un corps : murs, plus les herses et portes mobiles
+    colliders(self) {
+      const out = this.solids.slice();
+      for (const b of this.bodies) if (b.blocks && b !== self && !b.hidden && b.mat) out.push(b);
+      return out;
     }
 
     // ----- entrées -----
@@ -325,7 +338,7 @@
 
     fingerInZone() {
       const z = this.level.zone;
-      if (!z) return true;
+      if (!z || this.zoneOff) return true;
       const zones = Array.isArray(z) ? z : [z];
       return zones.some((r) => pointIn(this.finger, r));
     }
@@ -405,6 +418,7 @@
     }
 
     substep(dt) {
+      if (this.failed) return;
       this.time += dt;
       const tool = this.tool;
       const f = this.finger;
@@ -463,7 +477,7 @@
           anyPull = true;
           pulls.push({ from: s, to: c, sign: sg });
           // accroche : corps léger assez proche d'un aimant qui l'attire
-          if (canLift && sg > 0) {
+          if (canLift && sg > 0 && this.pathClear(c, s, b)) {
             if (s.kind === 'induced') {
               // maillon de chaîne : il s'accroche dès qu'il touche le maillon précédent
               if (dist(center(s.body), c) < (b.h + s.body.h) / 2 + 12) { this.attach(b, s); break; }
@@ -484,8 +498,23 @@
       }
       this.pulls = pulls;
 
+      // --- portes à minuterie : elles s'ouvrent et se ferment toutes seules ---
+      for (const b of this.bodies) {
+        if (!b.cycle || b.hidden) continue;
+        const c = b.cycle, period = c.open + c.closed, t = (this.time + (c.offset || 0)) % period;
+        const target = t < c.open ? b.rail.min : b.rail.max;      // min = ouverte (en haut)
+        const step = 700 * dt;
+        let ny = b.y + Math.max(-step, Math.min(step, target - b.y));
+        if (ny > b.y) {   // elle descend : elle ne referme pas sur quelqu'un
+          const probe = { x: b.x, y: ny, w: b.w, h: b.h };
+          if (this.bodies.some((o) => o !== b && !o.hidden && !o.captured && rectsOverlap(probe, o))) ny = b.y;
+        }
+        b.closing = ny > b.y; b.y = ny;
+      }
+
       // --- intégration ---
       for (const b of this.bodies) {
+        if (b.cycle) continue;
         if (b.hidden || b.latched || b.consumed || b.grab) continue;
         if (b.captured) { b.vy += G * dt; b.y += b.vy * dt; if (b.y > H + 200) b.hidden = true; continue; }
         if (b.attached) { this.followSource(b); continue; }
@@ -519,6 +548,12 @@
             if (Math.abs(ax) < 350 && Math.abs(b.vx) < 30) b.vx = 0;
           } else {
             b.vx *= Math.exp(-0.6 * dt);
+          }
+          // chevalier en ronde : il marche tant que l'aimant ne le tire pas fort
+          if (b.patrol && b.grounded && !b.ko && !b.tip && Math.abs(ax) < 420) {
+            const p = b.patrol;
+            if (b.x <= p.min) p.dir = 1; else if (b.x >= p.max) p.dir = -1;
+            b.vx = p.dir * p.speed;
           }
           const ms = b.maxSpeed || 900; b.vx = Math.max(-ms, Math.min(ms, b.vx));
           b.vy = Math.max(-1200, Math.min(1500, b.vy));
@@ -566,23 +601,39 @@
           if (on && !sn.pressed) this.events.push({ type: 'button', id: sn.id });
           sn.pressed = on || (sn.sticky && sn.pressed);
           if (sn.pressed && sn.removes) {
-            this.solids = this.solids.filter((s) => s.id !== sn.removes);
+            this.openSolids(sn.removes);
             sn.removes = null; this.events.push({ type: 'open', id: sn.id });
           }
         } else if (sn.type === 'latch') {
           const b = this.body(sn.body);
           if (b && !b.latched && !b.hidden && pointIn(center(b), sn)) {
-            b.latched = true; this.detach(b); b.vx = b.vy = 0;
+            b.latched = true; if (b.attached) this.detach(b); b.vx = b.vy = 0;
             if (sn.snapY !== undefined) b.y = sn.snapY;
             this.events.push({ type: 'latched', id: b.id });
+            if (sn.removes) { this.openSolids(sn.removes); this.events.push({ type: 'open', id: sn.id }); }
+          }
+        } else if (sn.type === 'alarm') {
+          for (const b of this.bodies) {
+            if (b.tag !== 'knight' || b.ko || b.captured || b.hidden) continue;
+            if (pointIn(center(b), sn)) { this.failed = true; this.events.push({ type: 'fail', id: sn.id }); }
           }
         } else if (sn.type === 'keyhole') {
           const b = this.body(sn.body);
           if (b && !b.consumed && !b.hidden && pointIn(center(b), sn)) {
-            b.consumed = true; b.hidden = true; b.attached = null; sn.pressed = true;
-            this.events.push({ type: 'key', id: sn.id });
+            if (b.attached) this.detach(b);
+            b.consumed = true; b.hidden = true; sn.pressed = true;
+            this.events.push({ type: 'key', id: sn.id, cage: !!sn.cageLock });
+            if (sn.removes) { this.openSolids(sn.removes); this.events.push({ type: 'open', id: sn.id }); }
           }
         }
+      }
+
+      // --- objectif intermédiaire : la clé apparaît, la vitre s'ouvre ---
+      if (!this.objectiveDone && this.level.objective && this.level.objective(this)) {
+        this.objectiveDone = true; this.zoneOff = true;
+        if (this.level.openOnObjective) this.openSolids(this.level.openOnObjective);
+        for (const b of this.bodies) if (b.revealOnObjective && b.hidden) { b.hidden = false; b.vx = b.vy = 0; this.events.push({ type: 'reveal', id: b.id }); }
+        this.events.push({ type: 'objective' });
       }
 
       // --- victoire ---
@@ -590,6 +641,21 @@
         this.won = true; this.winTime = this.time; this.events.push({ type: 'win' });
       }
       if (this.won) this.cageOpen = Math.min(1, this.cageOpen + dt * 1.2);
+    }
+
+    // Rien de solide entre le corps et l'aimant (sinon il ne peut pas venir s'y coller)
+    pathClear(p1, p2, self) {
+      for (const r of this.colliders(self)) {
+        if (r.attached && r.attached.source === p2) continue;
+        if (pointIn(p1, r)) continue;
+        if (segmentHitsRect(p1, p2, r)) return false;
+      }
+      return true;
+    }
+
+    openSolids(ids) {
+      const list = Array.isArray(ids) ? ids : [ids];
+      this.solids = this.solids.filter((s) => !list.includes(s.id));
     }
 
     attach(b, s) {
@@ -619,7 +685,7 @@
         else { ny = b.y; nx = Math.max(b.rail.min, Math.min(b.rail.max, nx)); }
       }
       const probe = { x: nx, y: ny, w: b.w, h: b.h };
-      for (const s of this.solids) {
+      for (const s of this.colliders(b)) {
         if (!rectsOverlap(probe, s)) continue;
         const overlapTop = probe.y + probe.h - s.y;     // le corps traîne sur un sol : on le pose dessus
         if (!b.rail && overlapTop > 0 && probe.y <= s.y + 2 && probe.x + probe.w > s.x + 4 && probe.x < s.x + s.w - 4) {
@@ -643,6 +709,10 @@
       k.h = 62; k.w = 110; k.x -= 20; k.y = bottom - k.h;
       k.vx = 0; k.vy = 0;
       this.events.push({ type: 'ko', id: k.id });
+      if (k.drops) {
+        const d = this.body(k.drops);
+        if (d && d.hidden) { d.hidden = false; d.x = k.x + k.w / 2 - d.w / 2; d.y = k.y - d.h - 10; d.vx = 60; d.vy = -500; this.events.push({ type: 'reveal', id: d.id }); }
+      }
     }
 
     // Les corps qui portent un aimant ne passent pas à travers l'aimant du doigt
@@ -658,9 +728,10 @@
     }
 
     moveWithCollisions(b, dt) {
+      const cols = this.colliders(b);
       // X
       b.x += b.vx * dt;
-      for (const s of this.solids) {
+      for (const s of cols) {
         if (!rectsOverlap(b, s)) continue;
         if (b.vx > 0) b.x = s.x - b.w; else if (b.vx < 0) b.x = s.x + s.w;
         b.vx = 0;
@@ -670,7 +741,7 @@
       const wasGrounded = b.grounded, vyBefore = b.vy;
       b.y += b.vy * dt;
       b.grounded = false;
-      for (const s of this.solids) {
+      for (const s of cols) {
         if (!rectsOverlap(b, s)) continue;
         if (b.vy > 0) { b.y = s.y - b.h; b.grounded = true; if (!wasGrounded && vyBefore > 250) this.events.push({ type: 'land', id: b.id, v: vyBefore }); }
         else if (b.vy < 0) b.y = s.y + s.h;
@@ -680,7 +751,7 @@
       b.tip = 0; b.tilt = 0;
       if (b.grounded) {
         const bottom = b.y + b.h; let lo = Infinity, hi = -Infinity;
-        for (const s of this.solids) {
+        for (const s of cols) {
           if (Math.abs(s.y - bottom) > 1.5) continue;
           const a = Math.max(b.x, s.x), c = Math.min(b.x + b.w, s.x + s.w);
           if (c > a) { lo = Math.min(lo, a); hi = Math.max(hi, c); }
@@ -692,9 +763,11 @@
           b.tilt = b.tip * Math.min(0.6, 0.15 + over / b.w);
         }
       }
-      // sol de secours
-      if (b.y + b.h > H + 300) { b.hidden = true; }
-      if (b.x < -200 || b.x > W + 200) b.hidden = true;
+      // tombé hors de la salle : la clé ou l'épée reviennent à leur place, le reste disparaît
+      if (b.y + b.h > H + 300 || b.x < -200 || b.x > W + 200) {
+        if (b.respawn) { b.x = b.spawn.x; b.y = b.spawn.y; b.vx = b.vy = 0; b.hooked = false; this.events.push({ type: 'respawn', id: b.id }); }
+        else b.hidden = true;
+      }
     }
 
     // Direction de la boussole (vers la cible désignée par le niveau)
@@ -802,6 +875,27 @@
   // Pêche à la chaîne : anneaux de x1 à x2 (hauteur de ramassage 230), puits à wx, serrure à kx
   const fish = (d, x1, x2, wx, kx, ky = 150) => d.down(x1, 366).wait(0.3).move(x1, 230, 0.5).move(x2, 230, 3.5).wait(0.4).move(wx, 230, 1.5).move(wx, 412, 2).wait(1.5).move(wx, ky, 2).move(kx, ky, 2).wait(1.2);
 
+  // Fin d'étage : quand l'objectif est atteint, la clé de Mei Mei tombe ; la clé dans le cadenas de la cage termine l'étage.
+  const cageLock = (cx, cy = 540) => ({ id: 'lock', type: 'keyhole', body: 'key', cageLock: true, x: cx - 10, y: cy + 20, w: 170, h: 170 });
+  function fin(r, { keyX, keyY = 150, cageX = 1060, cageY = 540, open, drop } = {}) {
+    r.finale = true; delete r.witch;
+    r.cage = { x: cageX, y: cageY };
+    r.sensors = (r.sensors || []).concat([cageLock(cageX, cageY)]);
+    if (drop) {                      // la clé est portée par un chevalier : elle tombe quand il est assommé
+      r.bodies = r.bodies.map((b) => (b.id === drop ? Object.assign({}, b, { drops: 'key' }) : b));
+      r.bodies = r.bodies.concat([{ id: 'key', kind: 'key', x: 0, y: 0, hidden: true, respawn: true }]);
+    } else if (keyX !== undefined) {   // la clé tombe du plafond quand l'objectif est réussi
+      r.objective = r.win;
+      r.bodies = r.bodies.concat([{ id: 'key', kind: 'key', x: keyX, y: keyY, hidden: true, revealOnObjective: true, respawn: true }]);
+    }
+    if (open) r.openOnObjective = open;
+    r.win = (w) => w.pressed('lock');
+    return r;
+  }
+  const bell = (x) => ({ id: 'bell', type: 'alarm', x, y: 560, w: 120, h: 160 });
+  // Démo : lâcher l'aimant, prendre la clé posée en (kx, ky) [haut de la clé], la porter jusqu'à la cage
+  const carry = (d, kx, ky, cx, viaY = 300, cy = 600) => d.up().down(kx + 27, ky - 12).wait(0.6).move(kx + 27, viaY, 0.8).move(cx + 75, viaY, 1.8).move(cx + 75, cy, 0.8).wait(1.2);
+
   const bar = [{ type: 'bar' }];
   const F = [];
 
@@ -817,6 +911,9 @@
       sensors: [trap('t1', 380, 510), trap('t2', 760, 890)], cage: { x: 1060, y: 540 }, witch: { x: 940, y: 560 },
       hint: 'Deux chevaliers, deux trous. Un par un.', win: (w) => w.captured('k1') && w.captured('k2'),
       demo: D().down(300, 650).move(650, 650, 2).wait(1).move(1000, 650, 2.5).wait(3).end() },
+    fin({ kind: 'salle', tools: bar, solids: room([[300, 430]]), bodies: [{ id: 'k', kind: 'knight', x: 560, y: KY, patrol: { min: 470, max: 1200, speed: 70, dir: 1 } }],
+      sensors: [trap('t', 300, 430), bell(1110)], hint: 'Il court sonner la cloche ! Ramène-le vite dans le trou, puis apporte la clé à Mei Mei.', win: (w) => w.captured('k'),
+      demo: carry(D().down(520, 650).wait(0.6).move(365, 650, 1.6).wait(1.4), 640, 690, 880).end() }, { keyX: 640, cageX: 880 }),
   ] });
 
   // 2 ------------------------------------------------------------ Attire ou pas
@@ -830,6 +927,10 @@
     { kind: 'salle', tools: bar, solids: room([[560, 690]]), bodies: [{ id: 's1', kind: 'straw', x: 380, y: KY }, { id: 's2', kind: 'straw', x: 760, y: KY }, { id: 'k', kind: 'knight', x: 120, y: KY }],
       sensors: [trap('t', 560, 690)], cage: { x: 1060, y: 540 }, witch: { x: 940, y: 560 }, hint: 'Trois gardes. Cherche celui qui est en fer.', win: (w) => w.captured('k'),
       demo: D().down(300, 665).move(700, 665, 3).wait(3).end() },
+    fin({ kind: 'salle', tools: bar, solids: room([[460, 590]]), bodies: [{ id: 's1', kind: 'straw', x: 260, y: KY }, { id: 's2', kind: 'straw', x: 1080, y: KY },
+        { id: 'k', kind: 'knight', x: 900, y: KY, patrol: { min: 700, max: 1000, speed: 60, dir: -1 } }],
+      sensors: [trap('t', 460, 590)], hint: 'Le garde en fer fait sa ronde. Attrape-le au bon moment, puis la clé !', win: (w) => w.captured('k'),
+      demo: carry(D().down(820, 650).wait(0.8).move(525, 650, 2.2).wait(1.4), 700, 690, 80).end() }, { keyX: 700, cageX: 80 }),
   ] });
 
   // 3 ------------------------------------------------------------ La serrure
@@ -848,6 +949,11 @@
       sensors: [latchAt('lA', 'bA', 620, 282, 110, 290), latchAt('lB', 'bB', 620, 642, 110, 650)],
       cage: { x: 1000, y: 540 }, witch: { x: 860, y: 560 }, hint: 'Deux verrous : un vers le haut, un vers le bas.', win: (w) => w.latched('bA') && w.latched('bB'),
       demo: D().down(600, 300).wait(2.5).move(600, 680, 1.5).wait(2.5).end() },
+    fin({ kind: 'salle', tools: bar, solids: room([[250, 380]]).concat([door(640)]),
+      bodies: [{ id: 'bolt', kind: 'bolt', x: 630, y: 420, rail: { axis: 'y', min: 290, max: 420 } }, { id: 'k', kind: 'knight', x: 900, y: KY }],
+      sensors: [trap('t', 250, 380), Object.assign(latchAt('l', 'bolt', 620, 282, 110, 290), { removes: 'door' })],
+      hint: 'Ouvre le verrou : la porte s’ouvre. Puis amène le chevalier dans le trou.', win: (w) => w.captured('k'),
+      demo: carry(D().down(600, 300).wait(1.8).move(860, 650, 1.2).wait(0.6).move(315, 650, 3.2).wait(1.5), 500, 690, 1060).end() }, { keyX: 500 }),
   ] });
 
   // 4 ------------------------------------------------------------ L'épée
@@ -862,6 +968,9 @@
       bodies: [{ id: 'k1', kind: 'knight', x: 460, y: KY }, { id: 'k2', kind: 'knight', x: 860, y: KY }, { id: 'sword', kind: 'sword', x: 150, y: 250 }],
       sensors: [], cage: { x: 1080, y: 540 }, witch: { x: 1140, y: 380 }, hint: 'Une seule épée pour deux chevaliers. Reprends-la après le premier.', win: (w) => w.ko('k1') && w.ko('k2'),
       demo: D().down(163, 240).wait(0.4).move(473, 300, 2).up().wait(2.5).down(473, 610).wait(0.5).move(473, 300, 1).move(873, 300, 1.5).up().wait(3).end() },
+    fin({ kind: 'salle', tools: bar, solids: room(), bodies: [{ id: 'k', kind: 'knight', x: 500, y: KY, patrol: { min: 450, max: 900, speed: 80, dir: 1 } }, { id: 'sword', kind: 'sword', x: 150, y: 250, respawn: true }],
+      sensors: [], hint: 'Le garde a la clé ! Tiens l’épée au-dessus de son chemin, et lâche-la au bon moment.', win: (w) => w.ko('k'),
+      demo: carry(D().down(163, 240).wait(0.4).move(700, 300, 1.2).wait(0.15).up().wait(1.5), 748, 690, 1060).end() }, { drop: 'k' }),
   ] });
 
   // 5 ------------------------------------------------------------ Les pôles
@@ -882,6 +991,9 @@
       sensors: [trap('tA', 560, 650), trap('tB', 1000, 1240)], cage: { x: 100, y: 540 }, witch: { x: 240, y: 560 },
       hint: 'Deux chevaliers, deux aimants. L’un vient, l’autre recule : approche du bon côté.', win: (w) => w.captured('kA') && w.captured('kB'),
       demo: D().down(520, 540).wait(3).move(790, 540, 1.5).wait(3).end() },
+    fin({ kind: 'salle', tools: bar, canFlip: true, solids: room([[960, 1090]]), bodies: [{ id: 'k', kind: 'knight', x: 800, y: KY, pole: 'S', patrol: { min: 150, max: 860, speed: 60, dir: -1 } }],
+      sensors: [trap('t', 960, 1090), bell(40)], hint: 'Il file vers la cloche ! Tire-le ou repousse-le vers le trou.', win: (w) => w.captured('k'),
+      demo: carry(D().down(1000, 560).wait(4), 600, 690, 230).end() }, { keyX: 600, cageX: 230 }),
   ] });
 
   // 6 ------------------------------------------------------------ La portée
@@ -894,6 +1006,9 @@
     Object.assign(reachRoom([{ id: 'k1', kind: 'knight', x: 430, y: KY }, { id: 'k2', kind: 'knight', x: 540, y: KY }], [[330, 420]], [trap('t', 330, 420)], (w) => w.captured('k1') && w.captured('k2')),
       { kind: 'salle', cage: { x: 1040, y: 540 }, witch: { x: 900, y: 560 }, hint: 'Le premier est près, le second est loin. Change d’aimant quand il le faut.',
         demo: D().down(230, 650).wait(3).up().tool(1).down(230, 650).wait(5).end() }),
+    Object.assign(fin(reachRoom([{ id: 'k', kind: 'knight', x: 700, y: KY, patrol: { min: 470, max: 1000, speed: 60, dir: -1 } }], [[330, 460]], [trap('t', 330, 460)], (w) => w.captured('k')),
+      { keyX: 900, open: ['glass240'] }), { kind: 'salle', hint: 'Il fait sa ronde. Attends qu’il s’approche, puis tire avec l’aimant double.',
+      demo: carry(D().tool(1).wait(2).down(230, 650).wait(5), 900, 690, 1060).end() }),
   ] });
 
   // 7 ------------------------------------------------------------ Le fer à cheval
@@ -909,6 +1024,12 @@
     { kind: 'salle', tools: hTools, solids: room(), bodies: [herse('hA', 300), herse('hB', 880)], sensors: [latchAt('lA', 'hA', 300, 420, 180, 360), latchAt('lB', 'hB', 880, 420, 180, 360)],
       cage: { x: 900, y: 540 }, witch: { x: 1110, y: 560 }, hint: 'Deux herses. Une après l’autre.', win: (w) => w.latched('hA') && w.latched('hB'),
       demo: D().tool(1).down(390, 560).wait(0.6).move(390, 330, 2).wait(0.5).up().down(970, 560).wait(0.6).move(970, 330, 2).wait(1).end() },
+    fin({ kind: 'salle', tools: hTools, solids: room().concat([{ id: 'shelf', x: 40, y: 430, w: 190, h: 24, mat: 'stone' }]),
+      bodies: [{ id: 'grille', kind: 'herse', x: 230, y: 430, w: 30, h: 290, rail: { axis: 'y', min: 140, max: 430 } },
+        { id: 'sword', kind: 'sword', x: 110, y: 470, respawn: true },
+        { id: 'k', kind: 'knight', x: 700, y: KY, patrol: { min: 600, max: 900, speed: 70, dir: 1 } }],
+      sensors: [latchAt('lg', 'grille', 215, 250, 60, 140)], hint: 'L’épée est enfermée. Lève la grille avec le fer à cheval, puis l’épée sur le garde qui a la clé.', win: (w) => w.ko('k'),
+      demo: carry(D().tool(1).down(245, 420).wait(0.6).move(245, 130, 1.5).wait(0.5).move(215, 600, 0.8).wait(1).move(215, 470, 0.5).move(400, 470, 1).move(750, 300, 1.2).wait(0.5).up().wait(1.5), 764, 690, 1060).end() }, { drop: 'k' }),
   ] });
 
   // 8 ------------------------------------------------------------ La chaîne
@@ -931,6 +1052,12 @@
       sensors: [{ id: 'keyhole', type: 'keyhole', body: 'key', x: 150, y: 260, w: 150, h: 150 }], cage: { x: 100, y: 250 }, witch: { x: 300, y: 270 }, well: { x: 600, y: 420, w: 120, h: 320 },
       hint: 'Les anneaux sont des deux côtés du puits. Ramasse-les tous, la serrure est à gauche.', win: (w) => w.pressed('keyhole'),
       demo: D().down(882, 366).wait(0.3).move(882, 230, 0.5).move(1000, 230, 1.5).move(430, 230, 3).move(520, 230, 1.5).wait(0.4).move(660, 230, 1.2).move(660, 412, 2).wait(1.5).move(660, 150, 2).move(225, 150, 2.5).wait(1.2).end() },
+    fin({ kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 1200, h: 310 }, solids: wellSolids(320),
+      bodies: rings([180, 250, 320, 390]).concat([{ id: 'key', kind: 'key', x: 633, y: 710, respawn: true },
+        { id: 'gate', kind: 'gate', x: 880, y: 110, w: 40, h: 310, rail: { axis: 'y', min: -220, max: 110 }, cycle: { open: 2, closed: 2.2 } }]),
+      sensors: [], well: { x: 600, y: 420, w: 120, h: 320 },
+      hint: 'Une porte s’ouvre et se ferme toute seule. Passe avec la clé quand elle est levée !',
+      demo: fish(D(), 202, 470, 660, 1135).end() }, { cageX: 1060, cageY: 250 }),
   ] });
 
   // 9 ------------------------------------------------------------ Le bouclier
@@ -940,6 +1067,10 @@
   F.push({ n: 9, title: 'Le bouclier', taunt: 'Une plaque de fer, et ton aimant ne passe plus !', rooms: [
     Object.assign(shieldRoom(380, 60, 400), { kind: 'atelier', hint: 'Le fer bloque l’aimant. Mets ta main en face de la fente.', demo: D().down(610, 250).wait(1.5).move(610, 410, 1).wait(3).end() }),
     Object.assign(shieldRoom(480, 80, 400), { kind: 'salle', cage: { x: 1040, y: 540 }, witch: { x: 1120, y: 380 }, hint: 'La fente n’est pas en face du verrou. Colle ta main à la plaque, au niveau de la fente.', demo: D().down(632, 545).wait(3).end() }),
+    fin({ kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 }, solids: room().concat(plates(480, 80), [{ id: 'shelf', x: 662, y: 560, w: 220, h: 20, mat: 'stone' }]),
+      bodies: [{ id: 'key', kind: 'key', x: 720, y: 530, respawn: true }], sensors: [],
+      hint: 'La clé de Mei Mei est derrière la plaque de fer. Attire-la par la fente.',
+      demo: D().down(630, 525).wait(2).move(375, 525, 1.5).move(375, 600, 0.8).wait(1.2).end() }, { cageX: 300 }),
   ] });
 
   // 10 ----------------------------------------------------------- Le clou aimanté
@@ -952,6 +1083,12 @@
     Object.assign(nailRoom([door(640), Object.assign(door(960), { id: 'door2' })], [nb('bA', 630), nb('bB', 950)], (w) => w.latched('bA') && w.latched('bB')),
       { kind: 'salle', cage: { x: 1100, y: 540 }, witch: { x: 1040, y: 400 }, hint: 'Deux verrous, et le clou faiblit. Refrotte s’il le faut.',
         demo: D().down(130, 600).rub(12).move(560, 300, 1).wait(2.5).move(880, 300, 1).wait(3).end() }),
+    (() => {
+      const r = nailRoom([door(760)], [nb('bolt', 750)], null); r.sensors[0].removes = 'door';
+      r.bodies.push({ id: 'key', kind: 'key', x: 1000, y: 690, respawn: true });
+      return fin(Object.assign(r, { kind: 'salle', hint: 'Frotte le clou, ouvre le verrou, et vite, la clé avant que le clou faiblisse !',
+        demo: D().down(130, 600).rub(12).move(680, 300, 1).wait(1.5).move(1027, 650, 1.2).wait(0.8).move(1027, 300, 0.6).move(525, 300, 1.2).move(525, 600, 0.6).wait(1.2).end() }), { cageX: 450 });
+    })(),
   ] });
 
   // 11 ----------------------------------------------------------- L'électroaimant
@@ -963,6 +1100,12 @@
     Object.assign(craneRoom([{ id: 'wall', x: 600, y: 400, w: 40, h: 320, mat: 'stone' }], [{ id: 'k', kind: 'knight', x: 200, y: KY }], 880, (w) => w.pressed('btn')),
       { kind: 'salle', cage: { x: 1060, y: 540 }, witch: { x: 1130, y: 380 }, hint: 'Un mur. Monte haut avant de passer de l’autre côté.',
         demo: D().electro().down(300, 580).wait(2).move(300, 180, 1.5).move(960, 180, 2.5).move(960, 560, 1.5).up().electro().wait(3).end() }),
+    (() => {
+      const r = craneRoom([{ id: 'door', x: 1010, y: 110, w: 30, h: 610, mat: 'wood' }], [{ id: 'k', kind: 'knight', x: 400, y: KY }, { id: 'key', kind: 'key', x: 60, y: 690, respawn: true }], 700, null, { x: 500, y: 250 });
+      r.sensors[0].removes = 'door';
+      return fin(Object.assign(r, { kind: 'salle', hint: 'Le chevalier sur le bouton ouvre la porte. Puis la clé, avec l’électroaimant.',
+        demo: D().electro().down(500, 580).wait(2).move(780, 560, 2).up().electro().wait(1.5).electro().down(87, 600).wait(1.5).move(87, 300, 1).move(1135, 300, 2.5).move(1135, 560, 1).wait(1.2).end() }), {});
+    })(),
   ] });
 
   // 12 ----------------------------------------------------------- La bobine
@@ -974,6 +1117,9 @@
     Object.assign(coilRoom([herse5('hA', 300, 3), herse5('hB', 880, 9)], [latchAt('lA', 'hA', 300, 420, 180, 360), latchAt('lB', 'hB', 880, 420, 180, 360)], (w) => w.latched('hA') && w.latched('hB')),
       { kind: 'salle', cage: { x: 900, y: 540 }, witch: { x: 1110, y: 560 }, hint: 'Une herse légère, une herse très lourde. Encore plus de tours pour la seconde.',
         demo: D().electro().turn().turn().down(390, 560).wait(0.8).move(390, 330, 2).wait(0.4).up().turn().turn().turn().turn().down(970, 560).wait(0.8).move(970, 330, 2).wait(1).end() }),
+    fin(Object.assign(coilRoom([herse5('grille', 1050, 9), { id: 'key', kind: 'key', x: 120, y: 690, respawn: true }], [latchAt('lg', 'grille', 1050, 420, 180, 360)], null), {
+      kind: 'salle', hint: 'Une grille très lourde devant Mei Mei. Ajoute des tours, lève-la, puis apporte la clé.',
+      demo: D().electro().turn().turn().turn().turn().turn().down(1140, 560).wait(0.8).move(1140, 330, 2).wait(0.5).move(147, 600, 2.5).wait(1.5).move(1135, 580, 3).wait(1.2).end() }), { cageX: 1060 }),
   ] });
 
   // 13 ----------------------------------------------------------- La boussole
@@ -985,6 +1131,8 @@
       demo: D().down(300, 500).move(950, 420, 2.5).up().tap(985, 400).wait(0.5).down(985, 400).move(985, 550, 1.2).up().wait(1).end() }),
     Object.assign(darkRoom(300, 560, 285), { kind: 'salle', cage: { x: 1060, y: 540 }, witch: { x: 760, y: 560 }, hint: 'Nouvelle cachette. La boussole sait.',
       demo: D().down(900, 300).move(330, 540, 2.5).up().tap(300, 560).wait(0.5).down(300, 560).move(300, 700, 1.2).up().wait(1).end() }),
+    Object.assign(darkRoom(640, 300, 625), { kind: 'salle', finale: true, cage: { x: 1060, y: 540 }, hint: 'Le levier caché ouvre la cage de Mei Mei. La boussole sait où il est.',
+      demo: D().down(200, 600).move(600, 330, 2.5).up().tap(640, 300).wait(0.5).down(640, 300).move(640, 440, 1.2).up().wait(1).end() }),
   ] });
 
   // 14 ----------------------------------------------------------- Le pôle caché
@@ -993,6 +1141,8 @@
   F.push({ n: 14, title: 'Le pôle caché', taunt: 'J’ai peint son aimant. Devine les pôles !', rooms: [
     Object.assign(hr(false, 'S'), { kind: 'atelier', hint: 'Appuie sur Limaille : les lignes montrent les pôles cachés. Regarde, puis choisis le bon côté.', demo: D().filings().wait(1).down(480, 560).wait(2.5).flip().wait(4).end() }),
     Object.assign(hr(true), { kind: 'salle', cage: { x: 100, y: 540 }, witch: { x: 240, y: 560 }, hint: 'De l’autre côté, et les pôles sont encore cachés.', demo: D().filings().down(800, 560).wait(2.5).flip().wait(4).end() }),
+    fin(Object.assign(hr(false), { kind: 'salle', hint: 'Pôle caché, et la clé de Mei Mei au bout. Regarde la limaille !',
+      demo: carry(D().filings().down(480, 560).wait(2.5).flip().wait(4), 300, 690, 1060).end() }), { keyX: 300, open: ['glass500'] }),
   ] });
 
   // 15 ----------------------------------------------------------- Tout ensemble
@@ -1015,10 +1165,21 @@
       cage: { x: 1060, y: 540 }, witch: { x: 1130, y: 380 },
       hint: 'Trop loin, et il a un aimant. Le bon aimant, et le bon côté.', win: (w) => w.captured('k'),
       demo: D().tool(1).flip().down(230, 560).wait(5).end() },
+    fin({ kind: 'salle', tools: bar, solids: room().concat([{ id: 'door', x: 360, y: 110, w: 40, h: 610, mat: 'wood' }]),
+      bodies: [{ id: 'bolt', kind: 'bolt', x: 335, y: 420, rail: { axis: 'y', min: 290, max: 420 } }, { id: 'sword', kind: 'sword', x: 160, y: 300, respawn: true },
+        { id: 'k', kind: 'knight', x: 620, y: KY, patrol: { min: 620, max: 1200, speed: 45, dir: 1 } }],
+      sensors: [Object.assign(latchAt('l', 'bolt', 325, 282, 110, 290), { removes: 'door' }), bell(1110)],
+      hint: 'Vite ! Ouvre la porte, prends l’épée, et assomme le garde avant qu’il sonne la cloche.', win: (w) => w.ko('k'),
+      demo: carry(D().down(470, 300).wait(1.5).move(173, 290, 1).wait(0.8).move(1000, 300, 1.5).wait(1.75).up().wait(1.5), 992, 690, 430).end() }, { drop: 'k', cageX: 430 }),
   ] });
 
   // 16 ----------------------------------------------------------- Le sommet
   F.push({ n: 16, title: 'Le sommet', taunt: 'Mon aimant géant tient la cage. Tu ne l’ouvriras jamais !', final: true, rooms: [
+    { kind: 'salle', tools: bar, solids: room().concat([{ id: 'lintel', x: 620, y: 110, w: 40, h: 260, mat: 'stone' }]),
+      bodies: [{ id: 'key', kind: 'key', x: 180, y: 690, respawn: true }, { id: 'gate', kind: 'gate', x: 620, y: 370, w: 40, h: 350, rail: { axis: 'y', min: 20, max: 370 }, cycle: { open: 1.6, closed: 2.2 } }],
+      sensors: [{ id: 'keyhole', type: 'keyhole', body: 'key', x: 1000, y: 420, w: 180, h: 200 }],
+      hint: 'La porte du sommet s’ouvre et se ferme. Passe avec la clé quand elle est levée !', win: (w) => w.pressed('keyhole'),
+      demo: D().down(207, 678).wait(0.6).move(207, 600, 0.5).move(560, 600, 1.2).wait(1.6).move(1090, 600, 1.0).wait(1.2).end() },
     { kind: 'salle', tools: [{ type: 'horseshoe' }], canFlip: true, final: true, solids: room(),
       bodies: [
         { id: 'giant', kind: 'giant', x: 560, y: 260, pole: 'S', rail: { axis: 'x', min: 300, max: 1300, flingAt: 700 } },
@@ -1029,9 +1190,9 @@
       demo: D().down(500, 292).wait(2).flip().wait(4).up().down(990, 560).wait(0.6).move(990, 330, 2).wait(1).end() },
   ] });
 
-  // Propage n/title/taunt/final dans chaque salle, et numérote les marches (1..40)
+  // Propage n/title/taunt/final dans chaque salle, et numérote les marches
   let step = 0;
-  for (const f of F) { f.firstStep = step + 1; f.rooms.forEach((r, i) => { r.n = f.n; r.floorTitle = f.title; r.taunt = f.taunt; r.index = i; r.total = f.rooms.length; r.step = ++step; if (f.final) r.final = true; }); }
+  for (const f of F) { f.firstStep = step + 1; f.rooms.forEach((r, i) => { r.n = f.n; r.floorTitle = f.title; r.taunt = f.taunt; r.index = i; r.total = f.rooms.length; r.step = ++step; if (f.final && i === f.rooms.length - 1) r.final = true; }); }
   F.STEPS = step;
 
   const out = F;
@@ -1117,7 +1278,7 @@
   ];
 
   const INTRO = {
-    lines: ['Une sorcière maligne a pris le chat.', 'Elle l’a caché tout en haut de sa tour.', 'Seize étages !', 'Toi, tu as un aimant.'],
+    lines: ['Une sorcière maligne a pris Mei Mei, notre chat.', 'Elle l’a caché tout en haut de sa tour.', 'Seize étages pleins de pièges !', 'Toi, tu as un aimant.'],
   };
 
   const out = { CARDS, INTRO };
@@ -1187,6 +1348,8 @@
     flip: () => tone(700, 0.06, 'triangle', 0.05),
     turn: (n) => tone(500 + n * 60, 0.08, 'triangle', 0.05),
     on: (on) => tone(on ? 900 : 300, 0.12, 'square', 0.06),
+    bell: () => { [0, 0.35, 0.7].forEach((d) => { tone(1568, 0.5, 'triangle', 0.09, 0, d); tone(2093, 0.4, 'sine', 0.05, 0, d); }); },
+    reveal: () => { [880, 1175, 1568].forEach((f, i) => tone(f, 0.18, 'triangle', 0.07, 0, i * 0.08)); },
     meow: () => { tone(700, 0.18, 'sine', 0.09, 200); tone(900, 0.25, 'sine', 0.09, -300, 0.18); },
   };
   function buzz(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) { /* ignore */ } }
@@ -1297,7 +1460,7 @@
     }
     const cur = FLOORS[progress.floor - 1];
     const stepNow = cur.firstStep + Math.min(progress.room, cur.rooms.length - 1);
-    $('#towerText').textContent = fr(progress.done.length ? `Marche ${stepNow} sur ${STEPS}. La sorcière est montée à l'étage ${progress.floor} avec le chat !` : `Quarante marches jusqu'au chat. Tu es sur la première.`);
+    $('#towerText').textContent = fr(progress.done.length ? `Marche ${stepNow} sur ${STEPS}. La sorcière est montée à l'étage ${progress.floor} avec Mei Mei !` : `${STEPS} marches jusqu'à Mei Mei. Tu es sur la première.`);
     drawStairs(stepNow);
     const roomLabel = progress.room ? ` (${roomName(cur.rooms[progress.room])})` : '';
     $('#btnClimb').textContent = `Monter à l'étage ${progress.floor}${roomLabel}`;
@@ -1329,7 +1492,11 @@
     out += '</svg>';
     el.innerHTML = out;
   }
-  function roomName(r) { return r.kind === 'atelier' ? 'Atelier' : `Salle ${r.index + 1 - (r.total === 3 ? 1 : 0)}`; }
+  function roomName(r) {
+    if (r.kind === 'atelier') return 'Atelier';
+    if (r.finale) return 'La cage de Mei Mei';
+    const f = FLOORS[r.n - 1]; return `Salle ${r.index + (f.rooms[0].kind === 'atelier' ? 0 : 1)}`;
+  }
 
   // ---------- fiche ----------
   function openCard(n) {
@@ -1352,6 +1519,7 @@
   let shake = 0, winAt = 0, idleT = 0, hintUntil = 0, hintCount = 0, flashes = [], particles = [], fx = {}, witchFx = { t: 0, text: '' };
   let demo = null, demoMode = null, demoTimer = 0, bannerT = 0, bannerText = '', bannerSub = '', flashWhite = 0, roomClearT = 0;
   let flight = null;   // { phase: 'in'|'hover'|'out', t, from, to, cageTaken }
+  let failAt = 0, meowT = 0;
   const hero = { x: 0, y: 0, face: 1, vx: 0, shown: false };
 
   function layout() {
@@ -1382,7 +1550,7 @@
     buildHud();
     $('#hint').hidden = true; hintCount = 0;
     show('game'); layout();
-    banner(room.kind === 'atelier' ? 'Atelier' : roomName(room), room.kind === 'atelier' ? 'Regarde, puis à toi.' : room.hint, 3.2);
+    banner(roomName(room), room.kind === 'atelier' ? 'Regarde, puis à toi.' : room.hint, 3.2);
     if (room.kind === 'atelier') startDemo('loop');
     lastT = performance.now();
     cancelAnimationFrame(raf); raf = requestAnimationFrame(loop);
@@ -1390,7 +1558,7 @@
   function resetWorld() {
     world = new World(room);
     shake = 0; winAt = 0; idleT = 0; hintUntil = 0; flashes = []; particles = []; fx = {}; witchFx = { t: 0, text: '' }; flashWhite = 0; roomClearT = 0;
-    demo = null; demoMode = null; demoTimer = 0; activePointer = null; flight = null;
+    demo = null; demoMode = null; demoTimer = 0; activePointer = null; flight = null; failAt = 0; meowT = 0;
   }
   function stopLoop() { cancelAnimationFrame(raf); raf = 0; }
   function renderDots() {
@@ -1517,6 +1685,9 @@
     updateGauge();
     if (world.won && !winAt && !demo) { winAt = t; shake = 0.4; flashWhite = 0.25; confetti(); if (room.index < floor.rooms.length - 1) banner(room.kind === 'atelier' ? 'Atelier réussi !' : 'Salle réussie !', '', 1.4); }
     if (winAt > 0 && t - winAt > 1500) { winAt = -1; onWin(); }
+    if (world.failed && !failAt) { failAt = t; shake = 0.5; banner('Ding ding !', 'Le garde a sonné la cloche. On recommence la salle.', 2); SFX.bell(); buzz([80, 60, 80]); }
+    if (failAt && t - failAt > 2000) { const wasDemo = !!demo; resetWorld(); buildHud(); if (wasDemo || room.kind === 'atelier') startDemo('loop'); }
+    if (meowT > 0) meowT -= dt;
     if (flight) updateFlight(dt);
     draw(t / 1000, dt);
   }
@@ -1558,7 +1729,16 @@
       case 'ko': SFX.ko(); if (!demo) buzz(60); shake = Math.max(shake, 0.35); if (b) { flashes.push({ x: c.x, y: b.y - 10, t: 0.9, text: 'Boum !' }); fxOf(b.id).stars = 1.4; spawnSmoke(c.x, b.y + b.h, 18); } witchReact('Oh non !'); break;
       case 'land': SFX.land(); if (b) { fxOf(b.id).sq = Math.min(1, ev.v / 900); spawnSmoke(c.x, b.y + b.h, 6, 0.6); if (b.kind === 'knight') shake = Math.max(shake, 0.12); } break;
       case 'button': case 'open': SFX.button(); spawnRing(c ? c.x : W / 2, c ? c.y : H / 2, '#3fbf5a', 50); break;
-      case 'key': SFX.latch(); spawnBurst(W - 200, 330, 16, '#ffd24a', 260); break;
+      case 'key': {
+        SFX.latch();
+        const sn = world.sensor(ev.id);
+        if (sn) spawnBurst(sn.x + sn.w / 2, sn.y + sn.h / 2, 22, '#ffd24a', 300);
+        if (ev.cage) { meowT = 2.2; setTimeout(() => SFX.meow(), 250); }
+        break;
+      }
+      case 'reveal': SFX.reveal(); if (b) { spawnBurst(c.x, c.y, 18, '#ffe066', 260); if (b.kind === 'key' && !demo) banner('La clé de Mei Mei !', 'Apporte-la jusqu’à sa cage.', 2.4); } break;
+      case 'objective': if (room.openOnObjective) spawnBurst(W / 2, 400, 20, '#bfe8ff', 300); break;
+      case 'respawn': if (b) { spawnSmoke(c.x, c.y, 10, 0.8); spawnRing(c.x, c.y, '#ffe066', 40); } break;
       case 'latched': SFX.latch(); if (b) spawnBurst(c.x, b.y, 12, '#cfd3d9', 200); break;
       case 'secret': SFX.secret(); shake = Math.max(shake, 0.2); break;
       case 'unhook': tone(1200, 0.05, 'square', 0.04); break;
@@ -1593,7 +1773,7 @@
     const f = flight; f.t += dt;
     if (f.phase === 'in' && f.t >= 1.3) { f.phase = 'hover'; f.t = 0; }
     else if (f.phase === 'hover') {
-      if (!f.spoken) { f.spoken = true; speak(floor.taunt + ' Encore un étage !', { pitch: 1.5, rate: 1.05 }); }
+      if (!f.spoken) { f.spoken = true; speak('Pas si vite ! ' + floor.taunt + ' Encore un étage !', { pitch: 1.5, rate: 1.05 }); }
       if (f.t >= 1.9) { f.phase = 'out'; f.t = 0; f.cageTaken = true; spawnSmoke(f.to.x + 150, f.to.y + 150, 22, 1.3); SFX.whoosh(); shake = 0.2; }
     } else if (f.phase === 'out' && f.t >= 1.6) { flight = null; stopLoop(); show('tower'); renderTower(); }
   }
@@ -1610,7 +1790,7 @@
     drawImageFit(img, { x: p.x, y: p.y, w: 300, h: 270 }, 'center');
     if (flight.phase === 'hover') {
       ctx.save(); ctx.globalAlpha = Math.min(1, flight.t * 3);
-      ctx.font = 'bold 26px Nunito, sans-serif'; const text = fr(floor.taunt);
+      ctx.font = 'bold 26px Nunito, sans-serif'; const text = fr('Pas si vite ! ' + floor.taunt);
       const tw = Math.min(520, ctx.measureText(text).width + 40);
       const bx = Math.max(20, Math.min(W - tw - 20, p.x + 150 - tw / 2)), by = p.y - 70;
       ctx.fillStyle = C.text; rr(bx, by, tw, 54, 16); ctx.fill();
@@ -1621,7 +1801,7 @@
   function showEnd() {
     show('end');
     SFX.win(); setTimeout(SFX.meow, 500); setTimeout(SFX.win, 900);
-    speak('Bravo ! Tu as délivré le chat !', { rate: 0.95 });
+    speak('Bravo ! Tu as délivré Mei Mei !', { rate: 0.95 });
     $('#btnEndHome').onclick = () => { show('title'); renderTitle(); };
   }
 
@@ -1754,6 +1934,17 @@
       if (s.type === 'button') {
         ctx.fillStyle = '#3a3340'; rr(s.x - 6, s.y + 8, s.w + 12, s.h - 8 + 6, 6); ctx.fill();
         ctx.fillStyle = s.pressed ? '#3fbf5a' : C.red; rr(s.x, s.y + (s.pressed ? 10 : 0), s.w, 14, 7); ctx.fill();
+      } else if (s.type === 'keyhole' && s.cageLock) {
+        // dessiné avec la cage (drawCage)
+      } else if (s.type === 'alarm') {
+        // la cloche : si un garde l'atteint, la salle recommence
+        const cx = s.x + s.w / 2, t = performance.now() / 1000, ring = world.failed ? Math.sin(t * 30) * 0.4 : Math.sin(t * 2) * 0.05;
+        ctx.fillStyle = '#4a3d36'; ctx.fillRect(cx - 4, s.y - 150, 8, 70);
+        ctx.save(); ctx.translate(cx, s.y - 80); ctx.rotate(ring);
+        ctx.fillStyle = C.gold; ctx.beginPath(); ctx.moveTo(-38, 60); ctx.quadraticCurveTo(-34, 0, 0, 0); ctx.quadraticCurveTo(34, 0, 38, 60); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#b8860b'; ctx.fillRect(-42, 56, 84, 10); ctx.beginPath(); ctx.arc(0, 70, 8, 0, 7); ctx.fill();
+        ctx.restore();
+        ctx.strokeStyle = 'rgba(232,183,58,0.5)'; ctx.setLineDash([10, 8]); ctx.lineWidth = 3; ctx.strokeRect(s.x, s.y, s.w, s.h); ctx.setLineDash([]);
       } else if (s.type === 'keyhole') {
         const cx = s.x + s.w / 2, cy = s.y + s.h / 2;
         ctx.fillStyle = s.pressed ? '#3fbf5a' : C.gold; rr(cx - 28, cy - 22, 56, 44, 8); ctx.fill();
@@ -1780,6 +1971,22 @@
     if (world.won && room.final) { drawImageFit(IMG.chat_saute, { x: c.x - 40, y: c.y - 60 - Math.abs(Math.sin(time * 4)) * 20, w: 240, h: 240 }); return; }
     const bob = world.won ? Math.sin(time * 40) * 4 : Math.sin(time * 1.6) * 2;
     drawImageFit(IMG.chat_cage, { x: c.x + bob, y: c.y, w: 150, h: 180 });
+    const lock = world.sensors.find((s) => s.cageLock);
+    if (lock && !lock.pressed) {
+      // cadenas doré sur la porte de la cage de Mei Mei
+      ctx.save(); ctx.translate(c.x + 78 + bob, c.y + 118); ctx.rotate(Math.sin(time * 3) * 0.08);
+      ctx.strokeStyle = '#b8860b'; ctx.lineWidth = 8; ctx.beginPath(); ctx.arc(0, -18, 15, Math.PI, 0); ctx.stroke();
+      ctx.fillStyle = C.gold; rr(-25, -18, 50, 42, 9); ctx.fill(); ctx.strokeStyle = '#8a6508'; ctx.lineWidth = 3; ctx.stroke();
+      ctx.fillStyle = '#2b2b2b'; ctx.beginPath(); ctx.arc(0, 0, 6, 0, 7); ctx.fill(); ctx.fillRect(-3, 0, 6, 14);
+      ctx.restore();
+    }
+    if (meowT > 0) {
+      ctx.save(); ctx.globalAlpha = Math.min(1, meowT * 2);
+      ctx.fillStyle = C.text; rr(c.x - 10, c.y - 60, 170, 50, 16); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(c.x + 60, c.y - 10); ctx.lineTo(c.x + 80, c.y + 10); ctx.lineTo(c.x + 90, c.y - 10); ctx.fill();
+      ctx.fillStyle = '#2b1a00'; ctx.font = 'bold 28px Fredoka, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('Miaou !', c.x + 75, c.y - 25);
+      ctx.restore();
+    }
   }
   function drawWitch(time) {
     const wi = room.witch;
@@ -1815,7 +2022,10 @@
     ctx.translate(cx, by); ctx.rotate(rot); ctx.scale(sx, sy); ctx.translate(-cx, -by);
     switch (b.kind) {
       case 'knight':
-        if (b.ko) drawImageFit(IMG.armure_tas, { x: b.x - 10, y: b.y - 40, w: b.w + 20, h: b.h + 40 }); else drawImageFit(IMG.armure, { x: b.x - 16, y: b.y - 14, w: b.w + 32, h: b.h + 14 });
+        if (b.ko) drawImageFit(IMG.armure_tas, { x: b.x - 10, y: b.y - 40, w: b.w + 20, h: b.h + 40 });
+        else if (b.patrol && b.patrol.dir < 0) { ctx.save(); ctx.translate(cx, 0); ctx.scale(-1, 1); ctx.translate(-cx, 0); drawImageFit(IMG.armure, { x: b.x - 16, y: b.y - 14, w: b.w + 32, h: b.h + 14 }); ctx.restore(); }
+        else drawImageFit(IMG.armure, { x: b.x - 16, y: b.y - 14, w: b.w + 32, h: b.h + 14 });
+        if (b.drops && !b.ko) { const kb = world.body(b.drops); if (kb && kb.hidden) { ctx.fillStyle = C.gold; ctx.beginPath(); ctx.arc(b.x + b.w - 4, b.y + 62, 9, 0, 7); ctx.fill(); ctx.fillRect(b.x + b.w - 6, b.y + 62, 4, 22); } }
         if (b.pole && (!b.hiddenPole || world.filings)) drawPoleLabel(b);
         else if (b.pole) drawHiddenPole(b);
         if (f && f.stars > 0) { drawStars(cx, b.y - 20, time); f.stars -= 1 / 60; }
@@ -1834,6 +2044,7 @@
         if (!b.attached && !b.consumed) { ctx.fillStyle = `rgba(255,230,120,${0.3 + 0.3 * Math.sin(time * 5)})`; ctx.beginPath(); ctx.arc(b.x + b.w / 2, b.y + b.h / 2, 36, 0, 7); ctx.fill(); }
         break;
       case 'herse': drawHerse(b); break;
+      case 'gate': drawGate(b); break;
       case 'lever':
         ctx.fillStyle = '#2c3036'; ctx.fillRect(b.x + 8, b.y - 40, 14, b.h + 60);
         ctx.fillStyle = C.wood; ctx.fillRect(b.x, b.y, b.w, b.h); ctx.fillStyle = C.red; ctx.beginPath(); ctx.arc(b.x + b.w / 2, b.y + 6, 16, 0, 7); ctx.fill();
@@ -1851,6 +2062,13 @@
     ctx.fillStyle = b.latched ? '#9fd6a8' : '#9aa1aa'; rr(b.x, b.y, b.w, b.h, 8); ctx.fill();
     ctx.fillStyle = '#d7dce2'; rr(b.x + 6, b.y + 4, b.w - 12, 5, 3); ctx.fill();
     ctx.fillStyle = '#5a6068'; ctx.beginPath(); ctx.arc(b.x + b.w / 2, b.y + b.h / 2, 5, 0, 7); ctx.fill();
+  }
+  function drawGate(b) {
+    ctx.fillStyle = '#7a4a1e'; ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.fillStyle = C.wood; for (let x = b.x + 4; x < b.x + b.w - 4; x += 14) ctx.fillRect(x, b.y, 9, b.h);
+    ctx.fillStyle = '#5a6068'; for (let y = b.y + 30; y < b.y + b.h; y += 70) ctx.fillRect(b.x - 2, y, b.w + 4, 10);
+    ctx.fillStyle = '#5a6068'; for (let x = b.x + 6; x < b.x + b.w; x += 14) { ctx.beginPath(); ctx.moveTo(x - 4, b.y + b.h); ctx.lineTo(x + 4, b.y + b.h); ctx.lineTo(x, b.y + b.h + 12); ctx.fill(); }
+    if (b.closing) { ctx.fillStyle = 'rgba(224,69,58,0.8)'; ctx.font = 'bold 30px Fredoka, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('!', b.x + b.w / 2, Math.max(150, b.y + b.h - 20)); }
   }
   function drawHerse(b) {
     ctx.fillStyle = '#3f454d';
@@ -2029,7 +2247,7 @@
     const hot = window.claude && window.claude.hot;
     if (hot && hot.ready) hot.ready(boot); else boot((hot && hot.data) || {});
   });
-  window.__game = { startRoom, get world() { return world; }, get demo() { return demo; }, show, openCard, renderTower, takeControl, FLOORS };
+  window.__game = { startRoom, startDemo, get world() { return world; }, get demo() { return demo; }, show, openCard, renderTower, takeControl, FLOORS };
 })();
 
 </script>

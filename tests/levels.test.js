@@ -55,11 +55,41 @@ test('trop faible avec 1 ou 3 tours (12, atelier)', () => {
   assert.ok(w.body('herse').attached);
 });
 test('la porte est bloquée tant que l’aimant géant tient la cage (16)', () => {
-  const w = new World(FLOORS[15].rooms[0]); w.pointerDown(990, 560); for (let i = 0; i < 60; i++) w.step(1 / 60);
+  const w = new World(FLOORS[15].rooms[1]); w.pointerDown(990, 560); for (let i = 0; i < 60; i++) w.step(1 / 60);
   assert.ok(!w.body('porte').attached);
 });
 
 test('15/3 : l’aimant simple ne porte pas assez loin', () => {
   const w = new World(FLOORS[14].rooms[2]); w.flip(); w.pointerDown(230, 560); for (let i = 0; i < 180; i++) w.step(1 / 60);
   assert.strictEqual(w.body('k').x, 480);
+});
+
+const run = (w, sec) => { for (let i = 0; i < sec * 60; i++) w.step(1 / 60); };
+test('1.4 : sans rien faire, le chevalier sonne la cloche', () => {
+  const w = new World(FLOORS[0].rooms[3]); run(w, 12); assert.ok(w.failed);
+});
+test('fins d’étage : la clé n’apparaît qu’après l’objectif', () => {
+  for (const f of FLOORS) for (const r of f.rooms) {
+    if (!r.finale || !r.objective) continue;
+    const w = new World(r); run(w, 1);
+    assert.ok(w.body('key').hidden, `${f.n}.${r.index + 1} : clé cachée au départ`);
+  }
+});
+test('4.4 : le garde porte la clé, elle tombe quand il est assommé', () => {
+  const w = new World(FLOORS[3].rooms[3]); assert.ok(w.body('key').hidden);
+  w.knockOut(w.body('k')); assert.ok(!w.body('key').hidden);
+});
+test('7.4 : grille baissée, l’épée reste enfermée', () => {
+  const w = new World(FLOORS[6].rooms[3]); w.selectTool(1); w.pointerDown(300, 520); run(w, 3);
+  const sw = w.body('sword'); assert.ok(sw.x + sw.w <= 231, 'épée derrière la grille : ' + sw.x);
+});
+test('8.4 : la porte fermée arrête la chaîne', () => {
+  const r = FLOORS[7].rooms[3]; const w = new World(r);
+  w.body('key').x = 840; w.body('key').y = 300; w.time = 2.5;      // porte en train de se fermer
+  run(w, 1); const g = w.body('gate'); assert.ok(g.y > 0, 'porte fermée');
+});
+test('la clé tombée dans un trou revient à sa place', () => {
+  const r = FLOORS[0].rooms[3]; const w = new World(r); const k = w.body('key');
+  k.hidden = false; k.x = 340; k.y = 600; run(w, 2);
+  assert.ok(k.y < 720 && !k.hidden, 'clé revenue : ' + k.y);
 });

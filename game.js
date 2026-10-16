@@ -59,6 +59,8 @@
     flip: () => tone(700, 0.06, 'triangle', 0.05),
     turn: (n) => tone(500 + n * 60, 0.08, 'triangle', 0.05),
     on: (on) => tone(on ? 900 : 300, 0.12, 'square', 0.06),
+    bell: () => { [0, 0.35, 0.7].forEach((d) => { tone(1568, 0.5, 'triangle', 0.09, 0, d); tone(2093, 0.4, 'sine', 0.05, 0, d); }); },
+    reveal: () => { [880, 1175, 1568].forEach((f, i) => tone(f, 0.18, 'triangle', 0.07, 0, i * 0.08)); },
     meow: () => { tone(700, 0.18, 'sine', 0.09, 200); tone(900, 0.25, 'sine', 0.09, -300, 0.18); },
   };
   function buzz(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) { /* ignore */ } }
@@ -169,7 +171,7 @@
     }
     const cur = FLOORS[progress.floor - 1];
     const stepNow = cur.firstStep + Math.min(progress.room, cur.rooms.length - 1);
-    $('#towerText').textContent = fr(progress.done.length ? `Marche ${stepNow} sur ${STEPS}. La sorcière est montée à l'étage ${progress.floor} avec le chat !` : `Quarante marches jusqu'au chat. Tu es sur la première.`);
+    $('#towerText').textContent = fr(progress.done.length ? `Marche ${stepNow} sur ${STEPS}. La sorcière est montée à l'étage ${progress.floor} avec Mei Mei !` : `${STEPS} marches jusqu'à Mei Mei. Tu es sur la première.`);
     drawStairs(stepNow);
     const roomLabel = progress.room ? ` (${roomName(cur.rooms[progress.room])})` : '';
     $('#btnClimb').textContent = `Monter à l'étage ${progress.floor}${roomLabel}`;
@@ -201,7 +203,11 @@
     out += '</svg>';
     el.innerHTML = out;
   }
-  function roomName(r) { return r.kind === 'atelier' ? 'Atelier' : `Salle ${r.index + 1 - (r.total === 3 ? 1 : 0)}`; }
+  function roomName(r) {
+    if (r.kind === 'atelier') return 'Atelier';
+    if (r.finale) return 'La cage de Mei Mei';
+    const f = FLOORS[r.n - 1]; return `Salle ${r.index + (f.rooms[0].kind === 'atelier' ? 0 : 1)}`;
+  }
 
   // ---------- fiche ----------
   function openCard(n) {
@@ -224,6 +230,7 @@
   let shake = 0, winAt = 0, idleT = 0, hintUntil = 0, hintCount = 0, flashes = [], particles = [], fx = {}, witchFx = { t: 0, text: '' };
   let demo = null, demoMode = null, demoTimer = 0, bannerT = 0, bannerText = '', bannerSub = '', flashWhite = 0, roomClearT = 0;
   let flight = null;   // { phase: 'in'|'hover'|'out', t, from, to, cageTaken }
+  let failAt = 0, meowT = 0;
   const hero = { x: 0, y: 0, face: 1, vx: 0, shown: false };
 
   function layout() {
@@ -254,7 +261,7 @@
     buildHud();
     $('#hint').hidden = true; hintCount = 0;
     show('game'); layout();
-    banner(room.kind === 'atelier' ? 'Atelier' : roomName(room), room.kind === 'atelier' ? 'Regarde, puis à toi.' : room.hint, 3.2);
+    banner(roomName(room), room.kind === 'atelier' ? 'Regarde, puis à toi.' : room.hint, 3.2);
     if (room.kind === 'atelier') startDemo('loop');
     lastT = performance.now();
     cancelAnimationFrame(raf); raf = requestAnimationFrame(loop);
@@ -262,7 +269,7 @@
   function resetWorld() {
     world = new World(room);
     shake = 0; winAt = 0; idleT = 0; hintUntil = 0; flashes = []; particles = []; fx = {}; witchFx = { t: 0, text: '' }; flashWhite = 0; roomClearT = 0;
-    demo = null; demoMode = null; demoTimer = 0; activePointer = null; flight = null;
+    demo = null; demoMode = null; demoTimer = 0; activePointer = null; flight = null; failAt = 0; meowT = 0;
   }
   function stopLoop() { cancelAnimationFrame(raf); raf = 0; }
   function renderDots() {
@@ -389,6 +396,9 @@
     updateGauge();
     if (world.won && !winAt && !demo) { winAt = t; shake = 0.4; flashWhite = 0.25; confetti(); if (room.index < floor.rooms.length - 1) banner(room.kind === 'atelier' ? 'Atelier réussi !' : 'Salle réussie !', '', 1.4); }
     if (winAt > 0 && t - winAt > 1500) { winAt = -1; onWin(); }
+    if (world.failed && !failAt) { failAt = t; shake = 0.5; banner('Ding ding !', 'Le garde a sonné la cloche. On recommence la salle.', 2); SFX.bell(); buzz([80, 60, 80]); }
+    if (failAt && t - failAt > 2000) { const wasDemo = !!demo; resetWorld(); buildHud(); if (wasDemo || room.kind === 'atelier') startDemo('loop'); }
+    if (meowT > 0) meowT -= dt;
     if (flight) updateFlight(dt);
     draw(t / 1000, dt);
   }
@@ -430,7 +440,16 @@
       case 'ko': SFX.ko(); if (!demo) buzz(60); shake = Math.max(shake, 0.35); if (b) { flashes.push({ x: c.x, y: b.y - 10, t: 0.9, text: 'Boum !' }); fxOf(b.id).stars = 1.4; spawnSmoke(c.x, b.y + b.h, 18); } witchReact('Oh non !'); break;
       case 'land': SFX.land(); if (b) { fxOf(b.id).sq = Math.min(1, ev.v / 900); spawnSmoke(c.x, b.y + b.h, 6, 0.6); if (b.kind === 'knight') shake = Math.max(shake, 0.12); } break;
       case 'button': case 'open': SFX.button(); spawnRing(c ? c.x : W / 2, c ? c.y : H / 2, '#3fbf5a', 50); break;
-      case 'key': SFX.latch(); spawnBurst(W - 200, 330, 16, '#ffd24a', 260); break;
+      case 'key': {
+        SFX.latch();
+        const sn = world.sensor(ev.id);
+        if (sn) spawnBurst(sn.x + sn.w / 2, sn.y + sn.h / 2, 22, '#ffd24a', 300);
+        if (ev.cage) { meowT = 2.2; setTimeout(() => SFX.meow(), 250); }
+        break;
+      }
+      case 'reveal': SFX.reveal(); if (b) { spawnBurst(c.x, c.y, 18, '#ffe066', 260); if (b.kind === 'key' && !demo) banner('La clé de Mei Mei !', 'Apporte-la jusqu’à sa cage.', 2.4); } break;
+      case 'objective': if (room.openOnObjective) spawnBurst(W / 2, 400, 20, '#bfe8ff', 300); break;
+      case 'respawn': if (b) { spawnSmoke(c.x, c.y, 10, 0.8); spawnRing(c.x, c.y, '#ffe066', 40); } break;
       case 'latched': SFX.latch(); if (b) spawnBurst(c.x, b.y, 12, '#cfd3d9', 200); break;
       case 'secret': SFX.secret(); shake = Math.max(shake, 0.2); break;
       case 'unhook': tone(1200, 0.05, 'square', 0.04); break;
@@ -465,7 +484,7 @@
     const f = flight; f.t += dt;
     if (f.phase === 'in' && f.t >= 1.3) { f.phase = 'hover'; f.t = 0; }
     else if (f.phase === 'hover') {
-      if (!f.spoken) { f.spoken = true; speak(floor.taunt + ' Encore un étage !', { pitch: 1.5, rate: 1.05 }); }
+      if (!f.spoken) { f.spoken = true; speak('Pas si vite ! ' + floor.taunt + ' Encore un étage !', { pitch: 1.5, rate: 1.05 }); }
       if (f.t >= 1.9) { f.phase = 'out'; f.t = 0; f.cageTaken = true; spawnSmoke(f.to.x + 150, f.to.y + 150, 22, 1.3); SFX.whoosh(); shake = 0.2; }
     } else if (f.phase === 'out' && f.t >= 1.6) { flight = null; stopLoop(); show('tower'); renderTower(); }
   }
@@ -482,7 +501,7 @@
     drawImageFit(img, { x: p.x, y: p.y, w: 300, h: 270 }, 'center');
     if (flight.phase === 'hover') {
       ctx.save(); ctx.globalAlpha = Math.min(1, flight.t * 3);
-      ctx.font = 'bold 26px Nunito, sans-serif'; const text = fr(floor.taunt);
+      ctx.font = 'bold 26px Nunito, sans-serif'; const text = fr('Pas si vite ! ' + floor.taunt);
       const tw = Math.min(520, ctx.measureText(text).width + 40);
       const bx = Math.max(20, Math.min(W - tw - 20, p.x + 150 - tw / 2)), by = p.y - 70;
       ctx.fillStyle = C.text; rr(bx, by, tw, 54, 16); ctx.fill();
@@ -493,7 +512,7 @@
   function showEnd() {
     show('end');
     SFX.win(); setTimeout(SFX.meow, 500); setTimeout(SFX.win, 900);
-    speak('Bravo ! Tu as délivré le chat !', { rate: 0.95 });
+    speak('Bravo ! Tu as délivré Mei Mei !', { rate: 0.95 });
     $('#btnEndHome').onclick = () => { show('title'); renderTitle(); };
   }
 
@@ -626,6 +645,17 @@
       if (s.type === 'button') {
         ctx.fillStyle = '#3a3340'; rr(s.x - 6, s.y + 8, s.w + 12, s.h - 8 + 6, 6); ctx.fill();
         ctx.fillStyle = s.pressed ? '#3fbf5a' : C.red; rr(s.x, s.y + (s.pressed ? 10 : 0), s.w, 14, 7); ctx.fill();
+      } else if (s.type === 'keyhole' && s.cageLock) {
+        // dessiné avec la cage (drawCage)
+      } else if (s.type === 'alarm') {
+        // la cloche : si un garde l'atteint, la salle recommence
+        const cx = s.x + s.w / 2, t = performance.now() / 1000, ring = world.failed ? Math.sin(t * 30) * 0.4 : Math.sin(t * 2) * 0.05;
+        ctx.fillStyle = '#4a3d36'; ctx.fillRect(cx - 4, s.y - 150, 8, 70);
+        ctx.save(); ctx.translate(cx, s.y - 80); ctx.rotate(ring);
+        ctx.fillStyle = C.gold; ctx.beginPath(); ctx.moveTo(-38, 60); ctx.quadraticCurveTo(-34, 0, 0, 0); ctx.quadraticCurveTo(34, 0, 38, 60); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#b8860b'; ctx.fillRect(-42, 56, 84, 10); ctx.beginPath(); ctx.arc(0, 70, 8, 0, 7); ctx.fill();
+        ctx.restore();
+        ctx.strokeStyle = 'rgba(232,183,58,0.5)'; ctx.setLineDash([10, 8]); ctx.lineWidth = 3; ctx.strokeRect(s.x, s.y, s.w, s.h); ctx.setLineDash([]);
       } else if (s.type === 'keyhole') {
         const cx = s.x + s.w / 2, cy = s.y + s.h / 2;
         ctx.fillStyle = s.pressed ? '#3fbf5a' : C.gold; rr(cx - 28, cy - 22, 56, 44, 8); ctx.fill();
@@ -652,6 +682,22 @@
     if (world.won && room.final) { drawImageFit(IMG.chat_saute, { x: c.x - 40, y: c.y - 60 - Math.abs(Math.sin(time * 4)) * 20, w: 240, h: 240 }); return; }
     const bob = world.won ? Math.sin(time * 40) * 4 : Math.sin(time * 1.6) * 2;
     drawImageFit(IMG.chat_cage, { x: c.x + bob, y: c.y, w: 150, h: 180 });
+    const lock = world.sensors.find((s) => s.cageLock);
+    if (lock && !lock.pressed) {
+      // cadenas doré sur la porte de la cage de Mei Mei
+      ctx.save(); ctx.translate(c.x + 78 + bob, c.y + 118); ctx.rotate(Math.sin(time * 3) * 0.08);
+      ctx.strokeStyle = '#b8860b'; ctx.lineWidth = 8; ctx.beginPath(); ctx.arc(0, -18, 15, Math.PI, 0); ctx.stroke();
+      ctx.fillStyle = C.gold; rr(-25, -18, 50, 42, 9); ctx.fill(); ctx.strokeStyle = '#8a6508'; ctx.lineWidth = 3; ctx.stroke();
+      ctx.fillStyle = '#2b2b2b'; ctx.beginPath(); ctx.arc(0, 0, 6, 0, 7); ctx.fill(); ctx.fillRect(-3, 0, 6, 14);
+      ctx.restore();
+    }
+    if (meowT > 0) {
+      ctx.save(); ctx.globalAlpha = Math.min(1, meowT * 2);
+      ctx.fillStyle = C.text; rr(c.x - 10, c.y - 60, 170, 50, 16); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(c.x + 60, c.y - 10); ctx.lineTo(c.x + 80, c.y + 10); ctx.lineTo(c.x + 90, c.y - 10); ctx.fill();
+      ctx.fillStyle = '#2b1a00'; ctx.font = 'bold 28px Fredoka, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('Miaou !', c.x + 75, c.y - 25);
+      ctx.restore();
+    }
   }
   function drawWitch(time) {
     const wi = room.witch;
@@ -687,7 +733,10 @@
     ctx.translate(cx, by); ctx.rotate(rot); ctx.scale(sx, sy); ctx.translate(-cx, -by);
     switch (b.kind) {
       case 'knight':
-        if (b.ko) drawImageFit(IMG.armure_tas, { x: b.x - 10, y: b.y - 40, w: b.w + 20, h: b.h + 40 }); else drawImageFit(IMG.armure, { x: b.x - 16, y: b.y - 14, w: b.w + 32, h: b.h + 14 });
+        if (b.ko) drawImageFit(IMG.armure_tas, { x: b.x - 10, y: b.y - 40, w: b.w + 20, h: b.h + 40 });
+        else if (b.patrol && b.patrol.dir < 0) { ctx.save(); ctx.translate(cx, 0); ctx.scale(-1, 1); ctx.translate(-cx, 0); drawImageFit(IMG.armure, { x: b.x - 16, y: b.y - 14, w: b.w + 32, h: b.h + 14 }); ctx.restore(); }
+        else drawImageFit(IMG.armure, { x: b.x - 16, y: b.y - 14, w: b.w + 32, h: b.h + 14 });
+        if (b.drops && !b.ko) { const kb = world.body(b.drops); if (kb && kb.hidden) { ctx.fillStyle = C.gold; ctx.beginPath(); ctx.arc(b.x + b.w - 4, b.y + 62, 9, 0, 7); ctx.fill(); ctx.fillRect(b.x + b.w - 6, b.y + 62, 4, 22); } }
         if (b.pole && (!b.hiddenPole || world.filings)) drawPoleLabel(b);
         else if (b.pole) drawHiddenPole(b);
         if (f && f.stars > 0) { drawStars(cx, b.y - 20, time); f.stars -= 1 / 60; }
@@ -706,6 +755,7 @@
         if (!b.attached && !b.consumed) { ctx.fillStyle = `rgba(255,230,120,${0.3 + 0.3 * Math.sin(time * 5)})`; ctx.beginPath(); ctx.arc(b.x + b.w / 2, b.y + b.h / 2, 36, 0, 7); ctx.fill(); }
         break;
       case 'herse': drawHerse(b); break;
+      case 'gate': drawGate(b); break;
       case 'lever':
         ctx.fillStyle = '#2c3036'; ctx.fillRect(b.x + 8, b.y - 40, 14, b.h + 60);
         ctx.fillStyle = C.wood; ctx.fillRect(b.x, b.y, b.w, b.h); ctx.fillStyle = C.red; ctx.beginPath(); ctx.arc(b.x + b.w / 2, b.y + 6, 16, 0, 7); ctx.fill();
@@ -723,6 +773,13 @@
     ctx.fillStyle = b.latched ? '#9fd6a8' : '#9aa1aa'; rr(b.x, b.y, b.w, b.h, 8); ctx.fill();
     ctx.fillStyle = '#d7dce2'; rr(b.x + 6, b.y + 4, b.w - 12, 5, 3); ctx.fill();
     ctx.fillStyle = '#5a6068'; ctx.beginPath(); ctx.arc(b.x + b.w / 2, b.y + b.h / 2, 5, 0, 7); ctx.fill();
+  }
+  function drawGate(b) {
+    ctx.fillStyle = '#7a4a1e'; ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.fillStyle = C.wood; for (let x = b.x + 4; x < b.x + b.w - 4; x += 14) ctx.fillRect(x, b.y, 9, b.h);
+    ctx.fillStyle = '#5a6068'; for (let y = b.y + 30; y < b.y + b.h; y += 70) ctx.fillRect(b.x - 2, y, b.w + 4, 10);
+    ctx.fillStyle = '#5a6068'; for (let x = b.x + 6; x < b.x + b.w; x += 14) { ctx.beginPath(); ctx.moveTo(x - 4, b.y + b.h); ctx.lineTo(x + 4, b.y + b.h); ctx.lineTo(x, b.y + b.h + 12); ctx.fill(); }
+    if (b.closing) { ctx.fillStyle = 'rgba(224,69,58,0.8)'; ctx.font = 'bold 30px Fredoka, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('!', b.x + b.w / 2, Math.max(150, b.y + b.h - 20)); }
   }
   function drawHerse(b) {
     ctx.fillStyle = '#3f454d';
@@ -901,5 +958,5 @@
     const hot = window.claude && window.claude.hot;
     if (hot && hot.ready) hot.ready(boot); else boot((hot && hot.data) || {});
   });
-  window.__game = { startRoom, get world() { return world; }, get demo() { return demo; }, show, openCard, renderTower, takeControl, FLOORS };
+  window.__game = { startRoom, startDemo, get world() { return world; }, get demo() { return demo; }, show, openCard, renderTower, takeControl, FLOORS };
 })();

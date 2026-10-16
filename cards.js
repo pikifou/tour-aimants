@@ -75,7 +75,7 @@
   ];
 
   const INTRO = {
-    lines: ['Une sorcière maligne a pris le chat.', 'Elle l’a caché tout en haut de sa tour.', 'Seize étages !', 'Toi, tu as un aimant.'],
+    lines: ['Une sorcière maligne a pris Mei Mei, notre chat.', 'Elle l’a caché tout en haut de sa tour.', 'Seize étages pleins de pièges !', 'Toi, tu as un aimant.'],
   };
 
   const out = { CARDS, INTRO };

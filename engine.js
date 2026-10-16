@@ -25,7 +25,8 @@
     bolt:   { w: 90, h: 20,  mat: 'iron', mass: 1,   rail: 'x' },
     ring:   { w: 44, h: 44,  mat: 'iron', mass: 0.5, chain: true },
     key:    { w: 54, h: 30,  mat: 'iron', mass: 0.5, chain: true },
-    herse:  { w: 180, h: 150, mat: 'iron', mass: 3,  rail: 'y', gravity: true },
+    herse:  { w: 180, h: 150, mat: 'iron', mass: 3,  rail: 'y', gravity: true, blocks: true },
+    gate:   { w: 40, h: 220, mat: 'wood', mass: 99, rail: 'y', blocks: true },
     lever:  { w: 30, h: 90,  mat: 'wood', mass: 1,   rail: 'y', grab: true },
     giant:  { w: 170, h: 64, mat: 'iron', mass: 7,   rail: 'x', pole: 'N' },
   };
@@ -70,6 +71,8 @@
           ko: false, latched: false, hidden: false, consumed: false, hooked: false, pole: null }, k, b);
         if (k.hook && b.hook !== false) body.hooked = true;
         if (body.randomPole) body.pole = Math.random() < 0.5 ? 'N' : 'S';
+        body.spawn = { x: body.x, y: body.y };
+        if (body.patrol) body.patrol = Object.assign({ dir: 1, speed: 80 }, body.patrol);
         if (body.rail) {
           const r = body.rail;
           body.rail = typeof r === 'string' ? { axis: r } : Object.assign({}, r);
@@ -93,6 +96,16 @@
       this.pulls = [];
       this.fingerBlocked = false;
       this.cageOpen = 0;             // 0..1 ouverture de la cage
+      this.failed = false;           // une cloche a sonné : la salle recommence
+      this.objectiveDone = false;    // première partie de la salle réussie (la clé apparaît)
+      this.zoneOff = false;
+    }
+
+    // Tout ce qui arrête un corps : murs, plus les herses et portes mobiles
+    colliders(self) {
+      const out = this.solids.slice();
+      for (const b of this.bodies) if (b.blocks && b !== self && !b.hidden && b.mat) out.push(b);
+      return out;
     }
 
     // ----- entrées -----
@@ -133,7 +146,7 @@
 
     fingerInZone() {
       const z = this.level.zone;
-      if (!z) return true;
+      if (!z || this.zoneOff) return true;
       const zones = Array.isArray(z) ? z : [z];
       return zones.some((r) => pointIn(this.finger, r));
     }
@@ -213,6 +226,7 @@
     }
 
     substep(dt) {
+      if (this.failed) return;
       this.time += dt;
       const tool = this.tool;
       const f = this.finger;
@@ -271,7 +285,7 @@
           anyPull = true;
           pulls.push({ from: s, to: c, sign: sg });
           // accroche : corps léger assez proche d'un aimant qui l'attire
-          if (canLift && sg > 0) {
+          if (canLift && sg > 0 && this.pathClear(c, s, b)) {
             if (s.kind === 'induced') {
               // maillon de chaîne : il s'accroche dès qu'il touche le maillon précédent
               if (dist(center(s.body), c) < (b.h + s.body.h) / 2 + 12) { this.attach(b, s); break; }
@@ -292,8 +306,23 @@
       }
       this.pulls = pulls;
 
+      // --- portes à minuterie : elles s'ouvrent et se ferment toutes seules ---
+      for (const b of this.bodies) {
+        if (!b.cycle || b.hidden) continue;
+        const c = b.cycle, period = c.open + c.closed, t = (this.time + (c.offset || 0)) % period;
+        const target = t < c.open ? b.rail.min : b.rail.max;      // min = ouverte (en haut)
+        const step = 700 * dt;
+        let ny = b.y + Math.max(-step, Math.min(step, target - b.y));
+        if (ny > b.y) {   // elle descend : elle ne referme pas sur quelqu'un
+          const probe = { x: b.x, y: ny, w: b.w, h: b.h };
+          if (this.bodies.some((o) => o !== b && !o.hidden && !o.captured && rectsOverlap(probe, o))) ny = b.y;
+        }
+        b.closing = ny > b.y; b.y = ny;
+      }
+
       // --- intégration ---
       for (const b of this.bodies) {
+        if (b.cycle) continue;
         if (b.hidden || b.latched || b.consumed || b.grab) continue;
         if (b.captured) { b.vy += G * dt; b.y += b.vy * dt; if (b.y > H + 200) b.hidden = true; continue; }
         if (b.attached) { this.followSource(b); continue; }
@@ -327,6 +356,12 @@
             if (Math.abs(ax) < 350 && Math.abs(b.vx) < 30) b.vx = 0;
           } else {
             b.vx *= Math.exp(-0.6 * dt);
+          }
+          // chevalier en ronde : il marche tant que l'aimant ne le tire pas fort
+          if (b.patrol && b.grounded && !b.ko && !b.tip && Math.abs(ax) < 420) {
+            const p = b.patrol;
+            if (b.x <= p.min) p.dir = 1; else if (b.x >= p.max) p.dir = -1;
+            b.vx = p.dir * p.speed;
           }
           const ms = b.maxSpeed || 900; b.vx = Math.max(-ms, Math.min(ms, b.vx));
           b.vy = Math.max(-1200, Math.min(1500, b.vy));
@@ -374,23 +409,39 @@
           if (on && !sn.pressed) this.events.push({ type: 'button', id: sn.id });
           sn.pressed = on || (sn.sticky && sn.pressed);
           if (sn.pressed && sn.removes) {
-            this.solids = this.solids.filter((s) => s.id !== sn.removes);
+            this.openSolids(sn.removes);
             sn.removes = null; this.events.push({ type: 'open', id: sn.id });
           }
         } else if (sn.type === 'latch') {
           const b = this.body(sn.body);
           if (b && !b.latched && !b.hidden && pointIn(center(b), sn)) {
-            b.latched = true; this.detach(b); b.vx = b.vy = 0;
+            b.latched = true; if (b.attached) this.detach(b); b.vx = b.vy = 0;
             if (sn.snapY !== undefined) b.y = sn.snapY;
             this.events.push({ type: 'latched', id: b.id });
+            if (sn.removes) { this.openSolids(sn.removes); this.events.push({ type: 'open', id: sn.id }); }
+          }
+        } else if (sn.type === 'alarm') {
+          for (const b of this.bodies) {
+            if (b.tag !== 'knight' || b.ko || b.captured || b.hidden) continue;
+            if (pointIn(center(b), sn)) { this.failed = true; this.events.push({ type: 'fail', id: sn.id }); }
           }
         } else if (sn.type === 'keyhole') {
           const b = this.body(sn.body);
           if (b && !b.consumed && !b.hidden && pointIn(center(b), sn)) {
-            b.consumed = true; b.hidden = true; b.attached = null; sn.pressed = true;
-            this.events.push({ type: 'key', id: sn.id });
+            if (b.attached) this.detach(b);
+            b.consumed = true; b.hidden = true; sn.pressed = true;
+            this.events.push({ type: 'key', id: sn.id, cage: !!sn.cageLock });
+            if (sn.removes) { this.openSolids(sn.removes); this.events.push({ type: 'open', id: sn.id }); }
           }
         }
+      }
+
+      // --- objectif intermédiaire : la clé apparaît, la vitre s'ouvre ---
+      if (!this.objectiveDone && this.level.objective && this.level.objective(this)) {
+        this.objectiveDone = true; this.zoneOff = true;
+        if (this.level.openOnObjective) this.openSolids(this.level.openOnObjective);
+        for (const b of this.bodies) if (b.revealOnObjective && b.hidden) { b.hidden = false; b.vx = b.vy = 0; this.events.push({ type: 'reveal', id: b.id }); }
+        this.events.push({ type: 'objective' });
       }
 
       // --- victoire ---
@@ -398,6 +449,21 @@
         this.won = true; this.winTime = this.time; this.events.push({ type: 'win' });
       }
       if (this.won) this.cageOpen = Math.min(1, this.cageOpen + dt * 1.2);
+    }
+
+    // Rien de solide entre le corps et l'aimant (sinon il ne peut pas venir s'y coller)
+    pathClear(p1, p2, self) {
+      for (const r of this.colliders(self)) {
+        if (r.attached && r.attached.source === p2) continue;
+        if (pointIn(p1, r)) continue;
+        if (segmentHitsRect(p1, p2, r)) return false;
+      }
+      return true;
+    }
+
+    openSolids(ids) {
+      const list = Array.isArray(ids) ? ids : [ids];
+      this.solids = this.solids.filter((s) => !list.includes(s.id));
     }
 
     attach(b, s) {
@@ -427,7 +493,7 @@
         else { ny = b.y; nx = Math.max(b.rail.min, Math.min(b.rail.max, nx)); }
       }
       const probe = { x: nx, y: ny, w: b.w, h: b.h };
-      for (const s of this.solids) {
+      for (const s of this.colliders(b)) {
         if (!rectsOverlap(probe, s)) continue;
         const overlapTop = probe.y + probe.h - s.y;     // le corps traîne sur un sol : on le pose dessus
         if (!b.rail && overlapTop > 0 && probe.y <= s.y + 2 && probe.x + probe.w > s.x + 4 && probe.x < s.x + s.w - 4) {
@@ -451,6 +517,10 @@
       k.h = 62; k.w = 110; k.x -= 20; k.y = bottom - k.h;
       k.vx = 0; k.vy = 0;
       this.events.push({ type: 'ko', id: k.id });
+      if (k.drops) {
+        const d = this.body(k.drops);
+        if (d && d.hidden) { d.hidden = false; d.x = k.x + k.w / 2 - d.w / 2; d.y = k.y - d.h - 10; d.vx = 60; d.vy = -500; this.events.push({ type: 'reveal', id: d.id }); }
+      }
     }
 
     // Les corps qui portent un aimant ne passent pas à travers l'aimant du doigt
@@ -466,9 +536,10 @@
     }
 
     moveWithCollisions(b, dt) {
+      const cols = this.colliders(b);
       // X
       b.x += b.vx * dt;
-      for (const s of this.solids) {
+      for (const s of cols) {
         if (!rectsOverlap(b, s)) continue;
         if (b.vx > 0) b.x = s.x - b.w; else if (b.vx < 0) b.x = s.x + s.w;
         b.vx = 0;
@@ -478,7 +549,7 @@
       const wasGrounded = b.grounded, vyBefore = b.vy;
       b.y += b.vy * dt;
       b.grounded = false;
-      for (const s of this.solids) {
+      for (const s of cols) {
         if (!rectsOverlap(b, s)) continue;
         if (b.vy > 0) { b.y = s.y - b.h; b.grounded = true; if (!wasGrounded && vyBefore > 250) this.events.push({ type: 'land', id: b.id, v: vyBefore }); }
         else if (b.vy < 0) b.y = s.y + s.h;
@@ -488,7 +559,7 @@
       b.tip = 0; b.tilt = 0;
       if (b.grounded) {
         const bottom = b.y + b.h; let lo = Infinity, hi = -Infinity;
-        for (const s of this.solids) {
+        for (const s of cols) {
           if (Math.abs(s.y - bottom) > 1.5) continue;
           const a = Math.max(b.x, s.x), c = Math.min(b.x + b.w, s.x + s.w);
           if (c > a) { lo = Math.min(lo, a); hi = Math.max(hi, c); }
@@ -500,9 +571,11 @@
           b.tilt = b.tip * Math.min(0.6, 0.15 + over / b.w);
         }
       }
-      // sol de secours
-      if (b.y + b.h > H + 300) { b.hidden = true; }
-      if (b.x < -200 || b.x > W + 200) b.hidden = true;
+      // tombé hors de la salle : la clé ou l'épée reviennent à leur place, le reste disparaît
+      if (b.y + b.h > H + 300 || b.x < -200 || b.x > W + 200) {
+        if (b.respawn) { b.x = b.spawn.x; b.y = b.spawn.y; b.vx = b.vy = 0; b.hooked = false; this.events.push({ type: 'respawn', id: b.id }); }
+        else b.hidden = true;
+      }
     }
 
     // Direction de la boussole (vers la cible désignée par le niveau)
