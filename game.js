@@ -179,7 +179,7 @@
     $('#btnHome').onclick = () => { show('title'); renderTitle(); };
     requestAnimationFrame(() => { const c = list.querySelector('.current'); if (c) c.scrollIntoView({ block: 'center' }); });
   }
-  // Escalier de 40 marches (SVG) : en zigzag, 5 volées de 8 ; le héros sur la marche courante, la cage en haut
+  // Escalier (SVG) : en zigzag, des volées de 10 marches ; le héros sur la marche courante, la cage en haut
   function drawStairs(stepNow) {
     const el = $('#stairs'); if (!el) return;
     const per = 10, flights = Math.ceil(STEPS / per), sw = 36, rise = 9, pad = 24;
@@ -907,8 +907,7 @@
       ctx.fillStyle = g; ctx.fillRect(0, 90, W, H - 90);
     } else { ctx.fillStyle = 'rgba(0,0,0,0.9)'; ctx.fillRect(0, 90, W, H - 90); }
     ctx.restore();
-    const sec = world.sensor('secret');
-    if (world.won || (sec && sec.done)) return;
+    if (world.won || world.sensors.filter((x) => x.type === 'secret').every((x) => x.done)) return;
     ctx.fillStyle = C.text; ctx.font = 'bold 26px Nunito, sans-serif'; ctx.textAlign = 'center';
     ctx.fillText('Touche l’écran : la boussole montre où chercher.', W / 2, 150);
   }

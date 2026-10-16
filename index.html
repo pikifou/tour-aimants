@@ -772,52 +772,59 @@
 
     // Direction de la boussole (vers la cible désignée par le niveau)
     compassAngle() {
-      const t = this.level.compassTarget; if (!t) return null;
+      let t = null;
+      // plusieurs cachettes : l'aiguille montre le prochain mur secret, puis le prochain levier à baisser
+      const sec = this.sensors.find((s) => s.type === 'secret' && !s.done);
+      if (sec) t = { x: sec.x + sec.w / 2, y: sec.y + sec.h / 2 };
+      else { const lv = this.bodies.find((b) => b.kind === 'lever' && !b.hidden && b.y < b.rail.max - 2); if (lv) t = { x: lv.x + lv.w / 2, y: lv.y + lv.h / 2 }; }
+      if (!t) t = this.level.compassTarget; if (!t) return null;
       return Math.atan2(t.y - this.finger.y, t.x - this.finger.x);
     }
 
     drainEvents() { const e = this.events; this.events = []; return e; }
   }
 
-  // Script de doigt : [['down',x,y,t], ['move',x,y,t], ['up',t], ['flip',t], ['tool',i,t], ['electro',t], ['turn',t], ['filings',t], ['tap',x,y,t], ['wait',t]]
-  // t = temps absolu (secondes) auquel l'action est terminée ; un 'move' interpole depuis la position précédente.
+  // Script de doigt (démo) : chaque étape a une durée relative. Les positions peuvent être des fonctions (w) => valeur,
+  // évaluées au début de l'étape, et 'until' attend qu'une condition sur le monde soit vraie (avec un délai maximum).
+  // ['down',x,y,d] ['move',x,y,d] ['up',d] ['flip',d] ['tool',i,d] ['electro',d] ['turn',d] ['filings',d] ['tap',x,y,d] ['wait',d] ['until',fn,max]
   class Replay {
-    constructor(world, steps) { this.w = world; this.steps = steps; this.i = 0; this.t = 0; this.pos = { x: 0, y: 0 }; this.from = { x: 0, y: 0 }; this.anchorT = 0; this.done = false; }
-    get hand() { const s = this.steps[Math.min(this.i, this.steps.length - 1)]; return { x: this.pos.x, y: this.pos.y, down: this.w.finger.down, label: s && s[0] }; }
+    constructor(world, steps) { this.w = world; this.steps = steps; this.i = 0; this.t = 0; this.pos = { x: 0, y: 0 }; this.from = { x: 0, y: 0 }; this.started = false; this.done = false; }
+    get hand() { return { x: this.pos.x, y: this.pos.y, down: this.w.finger.down }; }
+    val(v) { return typeof v === 'function' ? v(this.w) : v; }
     step(dt) {
-      if (this.done) return;
-      this.t += dt;
       const w = this.w;
-      while (this.i < this.steps.length) {
+      while (!this.done) {
+        if (this.i >= this.steps.length) { this.done = true; return; }
         const s = this.steps[this.i];
-        const endT = s[s.length - 1];
+        if (!this.started) { this.started = true; this.t = 0; this.from = { x: this.pos.x, y: this.pos.y };
+          if (s[0] === 'move' || s[0] === 'down' || s[0] === 'tap') this.target = { x: this.val(s[1]), y: this.val(s[2]) }; }
+        const dur = s[0] === 'until' ? s[2] : s[s.length - 1];
         if (s[0] === 'move') {
-          const x = s[1], y = s[2];
-          if (this.t < endT) {
-            const k = Math.max(0, Math.min(1, (this.t - this.anchorT) / Math.max(1e-6, endT - this.anchorT)));
-            const nx = this.from.x + (x - this.from.x) * k, ny = this.from.y + (y - this.from.y) * k;
-            this.pos = { x: nx, y: ny }; if (w.finger.down) w.pointerMove(nx, ny);
-            return;
-          }
-          this.pos = { x, y }; if (w.finger.down) w.pointerMove(x, y);
-        } else if (this.t < endT) {
-          return;
+          this.t += dt;
+          const k = Math.min(1, this.t / Math.max(1e-6, dur));
+          const nx = this.from.x + (this.target.x - this.from.x) * k, ny = this.from.y + (this.target.y - this.from.y) * k;
+          this.pos = { x: nx, y: ny }; if (w.finger.down) w.pointerMove(nx, ny);
+          if (k < 1) return;
+        } else if (s[0] === 'until') {
+          if (!s[1](w)) { this.t += dt; if (this.t < dur) return; }
         } else {
+          this.t += dt;
+          if (this.t < dur) return;
           switch (s[0]) {
-            case 'down': this.pos = { x: s[1], y: s[2] }; w.pointerDown(s[1], s[2]); break;
+            case 'down': this.pos = { x: this.target.x, y: this.target.y }; w.pointerDown(this.pos.x, this.pos.y); break;
             case 'up': w.pointerUp(); break;
             case 'flip': w.flip(); break;
             case 'tool': w.selectTool(s[1]); break;
             case 'electro': w.toggleElectro(); break;
             case 'turn': w.addTurn(); break;
             case 'filings': w.toggleFilings(); break;
-            case 'tap': this.pos = { x: s[1], y: s[2] }; w.pointerDown(s[1], s[2]); w.pointerUp(); break;
+            case 'tap': this.pos = { x: this.target.x, y: this.target.y }; w.pointerDown(this.pos.x, this.pos.y); w.pointerUp(); break;
             case 'wait': break;
           }
+          dt = 0;
         }
-        this.i++; this.anchorT = endT; this.from = { x: this.pos.x, y: this.pos.y };
+        this.i++; this.started = false;
       }
-      this.done = true;
     }
   }
 
@@ -827,7 +834,7 @@
 
 </script>
 <script>
-/* Les 16 étages de la tour. Chaque étage = (atelier) + salle 1 + salle 2.
+/* Les 16 étages de la tour (100 salles). Chaque étage = atelier + salles de plus en plus difficiles + la cage de Mei Mei.
    Coordonnées logiques 1280×800 (zone de jeu : y de 90 à 800).
    Chaque salle a une démo (script de doigt) : elle sert d'exemple dans l'atelier, de « Montre-moi », et de test automatique. */
 (function (root) {
@@ -855,23 +862,28 @@
 
   // Constructeur de démo : temps cumulé
   function D() {
-    const steps = []; let t = 0;
+    const steps = [];
     const api = {
-      down(x, y, d = 0.3) { t += d; steps.push(['down', x, y, t]); return api; },
-      move(x, y, d) { t += d; steps.push(['move', x, y, t]); return api; },
-      up(d = 0.15) { t += d; steps.push(['up', t]); return api; },
-      flip(d = 0.4) { t += d; steps.push(['flip', t]); return api; },
-      tool(i, d = 0.5) { t += d; steps.push(['tool', i, t]); return api; },
-      electro(d = 0.5) { t += d; steps.push(['electro', t]); return api; },
-      turn(d = 0.35) { t += d; steps.push(['turn', t]); return api; },
-      filings(d = 0.4) { t += d; steps.push(['filings', t]); return api; },
-      tap(x, y, d = 0.4) { t += d; steps.push(['tap', x, y, t]); return api; },
-      wait(d) { t += d; steps.push(['wait', t]); return api; },
+      down(x, y, d = 0.3) { steps.push(['down', x, y, d]); return api; },
+      move(x, y, d) { steps.push(['move', x, y, d]); return api; },
+      up(d = 0.15) { steps.push(['up', d]); return api; },
+      flip(d = 0.4) { steps.push(['flip', d]); return api; },
+      tool(i, d = 0.5) { steps.push(['tool', i, d]); return api; },
+      electro(d = 0.5) { steps.push(['electro', d]); return api; },
+      turn(d = 0.35) { steps.push(['turn', d]); return api; },
+      filings(d = 0.4) { steps.push(['filings', d]); return api; },
+      tap(x, y, d = 0.4) { steps.push(['tap', x, y, d]); return api; },
+      wait(d) { steps.push(['wait', d]); return api; },
+      until(fn, max = 15) { steps.push(['until', fn, max]); return api; },
       rub(n = 10) { for (let i = 0; i < n; i++) { api.move(300, 620, 0.25); api.move(130, 600, 0.25); } return api; },
+      // aller chercher un corps là où il est (position lue au moment de l'étape)
+      grab(id, dy = -12, d = 0.8) { api.up().move((w) => cx(w, id), (w) => w.body(id).y + dy, d).down((w) => cx(w, id), (w) => w.body(id).y + dy, 0.1).wait(0.5); return api; },
       end() { return steps; },
     };
     return api;
   }
+  const cx = (w, id) => { const b = w.body(id); return b.x + b.w / 2; };
+
   // Pêche à la chaîne : anneaux de x1 à x2 (hauteur de ramassage 230), puits à wx, serrure à kx
   const fish = (d, x1, x2, wx, kx, ky = 150) => d.down(x1, 366).wait(0.3).move(x1, 230, 0.5).move(x2, 230, 3.5).wait(0.4).move(wx, 230, 1.5).move(wx, 412, 2).wait(1.5).move(wx, ky, 2).move(kx, ky, 2).wait(1.2);
 
@@ -892,9 +904,9 @@
     r.win = (w) => w.pressed('lock');
     return r;
   }
-  const bell = (x) => ({ id: 'bell', type: 'alarm', x, y: 560, w: 120, h: 160 });
+  const bell = (x, y = 560, id = 'bell') => ({ id, type: 'alarm', x, y, w: 120, h: 160 });
   // Démo : lâcher l'aimant, prendre la clé posée en (kx, ky) [haut de la clé], la porter jusqu'à la cage
-  const carry = (d, kx, ky, cx, viaY = 300, cy = 600) => d.up().down(kx + 27, ky - 12).wait(0.6).move(kx + 27, viaY, 0.8).move(cx + 75, viaY, 1.8).move(cx + 75, cy, 0.8).wait(1.2);
+  const carry = (d, kx, ky, cx0, viaY = 300, cy = 600) => d.grab('key').move((w) => cx(w, 'key'), viaY, 0.8).move(cx0 + 75, viaY, 1.8).move(cx0 + 75, cy, 0.8).wait(1.2);
 
   const bar = [{ type: 'bar' }];
   const F = [];
@@ -1190,6 +1202,260 @@
       demo: D().down(500, 292).wait(2).flip().wait(4).up().down(990, 560).wait(0.6).move(990, 330, 2).wait(1).end() },
   ] });
 
+  // ============================================================ Salles de combinaison (100 salles au total)
+
+  // ----- démos génériques -----
+  const toward = (w, id, x) => cx(w, id) + Math.sign(x - cx(w, id)) * 70;
+  // tirer un chevalier jusqu'au-dessus d'un trou
+  const pull = (d, id, toX, dur = 2.2) => d.up()
+    .move((w) => toward(w, id, toX), (w) => w.body(id).y + 40, 0.6)
+    .down((w) => toward(w, id, toX), (w) => w.body(id).y + 40, 0.1).wait(0.4)
+    .move(toX, (w) => w.body(id).y + 40, dur).wait(1.4);
+  // prendre l'épée, la tenir au-dessus du chemin du chevalier, la lâcher au bon moment
+  const willBeUnder = (k, x, fall = 0.44) => (w) => {
+    const b = w.body(k); const c = b.x + b.w / 2;
+    if (!b.patrol) return true;
+    return Math.abs(c + b.patrol.speed * fall * b.patrol.dir - x) < 12;
+  };
+  const dropOn = (d, sw, k, holdX, holdY = 300) => d.grab(sw)
+    .move(holdX ?? ((w) => cx(w, k)), holdY, 1.2)
+    .until(holdX === undefined ? () => true : willBeUnder(k, holdX), 25)
+    .up().wait(1.2);
+  const gateJustOpen = (id, a = 0.5, b = 0.8) => (w) => { const g = w.body(id), c = g.cycle, t = (w.time + (c.offset || 0)) % (c.open + c.closed); return t > a && t < b; };
+  const all = (ids, fn) => (w) => ids.every((id) => fn(w, id));
+  const capturedAll = (...ids) => all(ids, (w, id) => w.captured(id));
+  const koAll = (...ids) => all(ids, (w, id) => w.ko(id));
+  const sword = (x = 150, y = 250, extra = {}) => Object.assign({ id: 'sword', kind: 'sword', x, y, respawn: true }, extra);
+  const K = (id, x, extra = {}) => Object.assign({ id, kind: 'knight', x, y: KY }, extra);
+  const cell = () => ({ solid: { id: 'shelf', x: 40, y: 430, w: 190, h: 24, mat: 'stone' },
+    bodies: [{ id: 'grille', kind: 'herse', x: 230, y: 430, w: 30, h: 290, rail: { axis: 'y', min: 140, max: 430 } }, sword(110, 470)],
+    sensor: latchAt('lg', 'grille', 215, 250, 60, 140) });
+  // ouvrir la grille au fer à cheval puis sortir l'épée de la cellule (outil 1 = fer à cheval)
+  const openCell = (d) => d.tool(1).down(245, 420).wait(0.6).move(245, 130, 1.5).wait(0.5).move(215, 600, 0.8).wait(1).move(215, 470, 0.5).move(400, 470, 1);
+  const multiDark = (pts) => ({ tools: [{ type: 'compass' }], dark: true, solids: room(),
+    bodies: pts.map(([tx, ty], i) => ({ id: 'lever' + i, kind: 'lever', x: tx - 15, y: ty - 50, hidden: true, rail: { axis: 'y', min: ty - 50, max: ty + 60 } })),
+    sensors: pts.map(([tx, ty], i) => ({ id: 'secret' + i, type: 'secret', x: tx - 60, y: ty - 60, w: 120, h: 120, reveals: ['lever' + i] })),
+    win: (w) => pts.every((_, i) => w.railAtMax('lever' + i)) });
+  const darkDemo = (pts) => {
+    const d = D().down(640, 650).move(pts[0][0], pts[0][1] + 30, 1.6).up();
+    pts.forEach(([tx, ty], i) => {
+      if (i) d.down(pts[i - 1][0] + (tx > pts[i - 1][0] ? 100 : -100), Math.min(680, pts[i - 1][1] + 160)).move(tx, ty + 30, 1.6).up();
+      d.tap(tx, ty).wait(0.5).down(tx, ty).move(tx, ty + 140, 1.2).up();
+    });
+    return d.wait(1).end();
+  };
+  const pedestalBtn = (x) => [{ id: 'ped', x, y: 560, w: 200, h: 160, mat: 'stone' }];
+  const EXTRA = {};
+
+  // 1 · L'aimant
+  EXTRA[1] = [
+    { kind: 'salle', tools: bar, solids: room([[380, 510], [1050, 1180]]), bodies: [K('k1', 200), K('k2', 600), K('k3', 880)],
+      sensors: [trap('t1', 380, 510), trap('t2', 1050, 1180)], hint: 'Trois chevaliers, deux trous. Pour chacun, choisis le trou le plus proche.', win: capturedAll('k1', 'k2', 'k3'),
+      demo: pull(pull(pull(D(), 'k1', 445), 'k2', 445), 'k3', 1115).end() },
+  ];
+  // 2 · Attire ou pas
+  EXTRA[2] = [
+    { kind: 'salle', tools: bar, solids: room([[450, 580]]), bodies: [K('k1', 250), { id: 's1', kind: 'straw', x: 640, y: KY }, { id: 's2', kind: 'straw', x: 820, y: KY }, K('k2', 1000)],
+      sensors: [trap('t', 450, 580)], hint: 'Deux gardes en fer cachés parmi la paille. Un seul trou pour les deux.', win: capturedAll('k1', 'k2'),
+      demo: pull(pull(D(), 'k1', 515), 'k2', 515, 3).end() },
+  ];
+  // 3 · La serrure
+  EXTRA[3] = [
+    { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 }, solids: room().concat([door(640)]),
+      bodies: [{ id: 'bA', kind: 'bolt', x: 630, y: 300, rail: { axis: 'y', min: 180, max: 300 } }, { id: 'bB', kind: 'bolt', x: 630, y: 420, rail: { axis: 'y', min: 420, max: 520 } }, { id: 'bC', kind: 'bolt', x: 630, y: 600, rail: { axis: 'y', min: 600, max: 680 } }],
+      sensors: [latchAt('lA', 'bA', 620, 172, 110, 180), latchAt('lB', 'bB', 620, 512, 110, 520), latchAt('lC', 'bC', 620, 672, 110, 680)],
+      hint: 'Trois verrous : un vers le haut, deux vers le bas.', win: all(['bA', 'bB', 'bC'], (w, id) => w.latched(id)),
+      demo: D().down(600, 170).wait(2).move(600, 540, 1).wait(2).move(600, 700, 1).wait(2).end() },
+  ];
+  // 4 · L'épée
+  EXTRA[4] = [
+    { kind: 'salle', tools: bar, solids: room(), bodies: [K('k', 450, { patrol: { min: 400, max: 950, speed: 70, dir: 1 } }), sword()],
+      hint: 'Il marche ! Tiens l’épée au-dessus de son chemin et lâche-la juste avant qu’il passe dessous.', win: (w) => w.ko('k'),
+      demo: dropOn(D(), 'sword', 'k', 700).end() },
+    { kind: 'salle', tools: bar, solids: room(), bodies: [K('k1', 300, { patrol: { min: 250, max: 560, speed: 80, dir: 1 } }), K('k2', 900, { patrol: { min: 700, max: 1100, speed: 90, dir: -1 } }), sword()],
+      hint: 'Deux gardes en ronde, une seule épée. Reprends-la après le premier.', win: koAll('k1', 'k2'),
+      demo: dropOn(dropOn(D(), 'sword', 'k1', 420), 'sword', 'k2', 900).end() },
+  ];
+  // 5 · Les pôles
+  EXTRA[5] = [
+    { kind: 'salle', tools: bar, canFlip: true, solids: room([[560, 690]]), bodies: [K('k1', 420, { pole: 'N' }), K('k2', 760, { pole: 'N' })],
+      sensors: [trap('t', 560, 690)], hint: 'Ils te repoussent tous les deux. Retourne ton aimant pour les attirer dans le trou.', win: capturedAll('k1', 'k2'),
+      demo: D().flip().down(625, 560).wait(5).end() },
+    { kind: 'salle', tools: bar, canFlip: true, zone: { x: 720, y: 110, w: 520, h: 610 }, solids: room([[380, 540]]).concat([glass(700)]), bodies: [K('k', 580, { pole: 'N' })],
+      sensors: [trap('t', 380, 540)], hint: 'Le trou est de l’autre côté. Pousse-le sans le toucher !', win: (w) => w.captured('k'),
+      demo: D().down(730, 650).wait(4).end() },
+  ];
+  // 6 · La portée
+  EXTRA[6] = [
+    Object.assign(reachRoom([K('k1', 400), K('k2', 700, { patrol: { min: 520, max: 950, speed: 70, dir: 1 } })], [[280, 390]], [trap('t', 280, 390)], capturedAll('k1', 'k2')),
+      { kind: 'salle', hint: 'Le premier est tout près. Le second fait sa ronde : attends-le avec l’aimant double.',
+        demo: D().down(230, 650).wait(3).up().tool(1).until((w) => cx(w, 'k2') < 600).down(230, 650).wait(5).end() }),
+    Object.assign(reachRoom([K('k1', 445), K('k2', 520)], [[330, 440]], [trap('t', 330, 440)], capturedAll('k1', 'k2')),
+      { kind: 'salle', hint: 'Deux d’un coup ? Avec l’aimant double, peut-être…', demo: D().tool(1).down(230, 650).wait(7).end() }),
+  ];
+  // 7 · Le fer à cheval
+  EXTRA[7] = [
+    { kind: 'salle', tools: hTools, solids: room([[300, 430]]), bodies: [herse('hA', 700), K('k', 1000)], sensors: [latchAt('lA', 'hA', 700, 420, 180, 360), trap('t', 300, 430)],
+      hint: 'La herse bloque le chevalier. Lève-la, puis attire-le dans le trou.', win: (w) => w.captured('k'),
+      demo: pull(D().tool(1).down(790, 560).wait(0.6).move(790, 330, 2).wait(0.5), 'k', 365, 3).end() },
+    (() => { const c = cell(); return { kind: 'salle', tools: hTools, solids: room().concat([c.solid], niche(800)), bodies: c.bodies.concat([K('k', 800)]), sensors: [c.sensor],
+      hint: 'L’épée est enfermée derrière une grille. Lève la grille, puis l’épée sur le chevalier.', win: (w) => w.ko('k'),
+      demo: openCell(D()).move(833, 300, 1.2).up().wait(2).end() }; })(),
+    { kind: 'salle', tools: hTools, solids: room([[250, 380]]), bodies: [herse('hA', 450), herse('hB', 700), K('k', 1000)],
+      sensors: [latchAt('lA', 'hA', 450, 420, 180, 360), latchAt('lB', 'hB', 700, 420, 180, 360), trap('t', 250, 380)],
+      hint: 'Deux herses entre toi et le chevalier.', win: (w) => w.captured('k'),
+      demo: pull(D().tool(1).down(540, 560).wait(0.6).move(540, 330, 2).wait(0.5).up().down(790, 560).wait(0.6).move(790, 330, 2).wait(0.5), 'k', 315, 3.5).end() },
+  ];
+  // 8 · La chaîne
+  const fishGate = (d, x1, x2, gate, wx, kx, ky = 150) => d.down(x1, 366).wait(0.3).move(x1, 230, 0.5).move(x2, 230, 3.5).wait(0.4)
+    .until(gateJustOpen(gate), 10).move(wx, 230, 1.0).move(wx, 412, 2).wait(1.5).move(wx, ky, 2).move(kx, ky, 2).wait(1.2);
+  EXTRA[8] = [
+    { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 1200, h: 310 }, solids: wellSolids(320),
+      bodies: rings([416, 346], 'rL').concat(rings([846, 776], 'rR'), [{ id: 'key', kind: 'key', x: 633, y: 710 }]),
+      sensors: [{ id: 'keyhole', type: 'keyhole', body: 'key', x: 1020, y: 260, w: 150, h: 150 }], well: { x: 600, y: 420, w: 120, h: 320 },
+      hint: 'Les anneaux sont des deux côtés. La serrure est à droite.', win: (w) => w.pressed('keyhole'),
+      demo: D().down(438, 366).wait(0.3).move(438, 230, 0.5).move(320, 230, 1.5).move(890, 230, 3).move(800, 230, 1.5).wait(0.4).move(660, 230, 1.2).move(660, 412, 2).wait(1.5).move(660, 150, 2).move(1095, 150, 2.5).wait(1.2).end() },
+    { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 1200, h: 310 }, solids: wellSolids(320),
+      bodies: rings([180, 250, 320, 390]).concat([{ id: 'key', kind: 'key', x: 633, y: 710 }, { id: 'gate', kind: 'gate', x: 480, y: 110, w: 40, h: 310, rail: { axis: 'y', min: -220, max: 110 }, cycle: { open: 2, closed: 2 } }]),
+      sensors: [{ id: 'keyhole', type: 'keyhole', body: 'key', x: 960, y: 260, w: 150, h: 150 }], well: { x: 600, y: 420, w: 120, h: 320 },
+      hint: 'Une porte s’ouvre et se ferme avant le puits. Passe avec la chaîne quand elle est levée.', win: (w) => w.pressed('keyhole'),
+      demo: fishGate(D(), 202, 440, 'gate', 660, 1035).end() },
+    { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 1200, h: 310 }, solids: wellSolids(320),
+      bodies: rings([800, 870, 940, 1010]).concat([{ id: 'key', kind: 'key', x: 633, y: 710 }, { id: 'gate', kind: 'gate', x: 745, y: 110, w: 40, h: 310, rail: { axis: 'y', min: -220, max: 110 }, cycle: { open: 1.6, closed: 1.8 } }]),
+      sensors: [{ id: 'keyhole', type: 'keyhole', body: 'key', x: 150, y: 260, w: 150, h: 150 }], well: { x: 600, y: 420, w: 120, h: 320 },
+      hint: 'La porte est plus rapide. Attends le bon moment !', win: (w) => w.pressed('keyhole'),
+      demo: D().down(1032, 366).wait(0.3).move(1032, 230, 0.5).move(810, 230, 3.5).wait(0.4).until(gateJustOpen('gate', 0.45, 0.7), 10).move(660, 230, 0.8).move(660, 412, 2).wait(1.5).move(660, 150, 2).move(225, 150, 2.5).wait(1.2).end() },
+  ];
+  // 9 · Le bouclier
+  EXTRA[9] = [
+    { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 },
+      solids: room().concat([{ id: 'p1', x: 640, y: 110, w: 22, h: 190, mat: 'iron' }, { id: 'p2', x: 640, y: 360, w: 22, h: 140, mat: 'iron' }, { id: 'p3', x: 640, y: 560, w: 22, h: 160, mat: 'iron' }]),
+      bodies: [{ id: 'bA', kind: 'bolt', x: 780, y: 320, rail: { axis: 'x', min: 680, max: 780 } }, { id: 'bB', kind: 'bolt', x: 780, y: 520, rail: { axis: 'x', min: 680, max: 780 } }],
+      sensors: [latchAt('lA', 'bA', 660, 312, 90), latchAt('lB', 'bB', 660, 512, 90)], hint: 'Deux verrous, deux fentes.', win: (w) => w.latched('bA') && w.latched('bB'),
+      demo: D().down(632, 330).wait(2.5).move(632, 530, 1).wait(2.5).end() },
+    { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 }, solids: room([[665, 790]]).concat([{ id: 'p1', x: 640, y: 110, w: 22, h: 450, mat: 'iron' }]),
+      bodies: [K('k', 795)], sensors: [trap('t', 665, 790)], hint: 'Le chevalier est derrière la plaque. La fente est tout en bas.', win: (w) => w.captured('k'),
+      demo: D().down(632, 650).wait(4).end() },
+    { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 }, solids: room([[680, 790]]).concat([{ id: 'p1', x: 640, y: 110, w: 22, h: 450, mat: 'iron' }]),
+      bodies: [K('k', 950, { patrol: { min: 800, max: 1200, speed: 60, dir: -1 } })], sensors: [trap('t', 680, 790), bell(1110)],
+      hint: 'Il fait demi-tour vers la cloche ! Attrape-le par la fente quand il s’approche.', win: (w) => w.captured('k'),
+      demo: D().down(632, 650).wait(6).end() },
+  ];
+  // 10 · Le clou aimanté
+  EXTRA[10] = [
+    Object.assign(nailRoom([Object.assign(door(450), { id: 'd1' }), Object.assign(door(750), { id: 'd2' }), Object.assign(door(1050), { id: 'd3' })], [nb('b1', 440), nb('b2', 740), nb('b3', 1040)], all(['b1', 'b2', 'b3'], (w, id) => w.latched(id))),
+      { kind: 'salle', hint: 'Trois verrous ! Le clou va faiblir : frotte bien.', demo: D().down(130, 600).rub(12).move(370, 300, 1).wait(1.5).move(670, 300, 1).wait(1.5).move(970, 300, 1).wait(2).end() }),
+    { kind: 'salle', tools: [{ type: 'nail' }], lodestone: { x: 90, y: 540, w: 230, h: 180 }, solids: room([[800, 930]]), bodies: [K('k', 600)], sensors: [trap('t', 800, 930)],
+      hint: 'Le clou aimanté tire aussi les chevaliers.', win: (w) => w.captured('k'),
+      demo: pull(D().down(130, 600).rub(12), 'k', 865).end() },
+    (() => { const r = { kind: 'salle', tools: [{ type: 'nail' }], lodestone: { x: 90, y: 540, w: 230, h: 180 }, solids: room([[450, 580]]).concat([door(760)]),
+      bodies: [nb('bolt', 750), K('k', 950)], sensors: [Object.assign(latchAt('l', 'bolt', 740, 282, 110, 290), { removes: 'door' }), trap('t', 450, 580)],
+      hint: 'Ouvre le verrou avec le clou, puis refrotte-le pour attirer le chevalier.', win: (w) => w.captured('k'),
+      demo: pull(D().down(130, 600).rub(12).move(680, 300, 1).wait(1.5).move(130, 600, 1).rub(10), 'k', 515).end() }; return r; })(),
+  ];
+  // 11 · L'électroaimant
+  const crane = (extra) => Object.assign({ tools: [{ type: 'electro' }], crane: { x: 500, y: 250 }, craneZone: { x: 80, y: 130, w: 1120, h: 470 } }, extra);
+  const btn = (id, x, y = 700) => ({ id, type: 'button', x, y, w: 160, h: 20, minMass: 4, sticky: true });
+  EXTRA[11] = [
+    crane({ kind: 'salle', solids: room(), bodies: [K('k1', 150), K('k2', 600)], sensors: [btn('b1', 750), btn('b2', 1000)],
+      hint: 'Deux boutons, deux chevaliers. Passe en hauteur !', win: (w) => w.pressed('b1') && w.pressed('b2'),
+      demo: D().electro().down(185, 580).wait(2).move(185, 200, 1).move(1080, 200, 2).move(1080, 560, 1).up().electro().wait(1.5).electro().down(635, 580).wait(2).move(830, 560, 1.5).up().electro().wait(2).end() }),
+    crane({ kind: 'salle', solids: room([[900, 1030]]).concat([{ id: 'wall', x: 600, y: 400, w: 40, h: 320, mat: 'stone' }]), bodies: [K('k', 200)], sensors: [trap('t', 900, 1030)],
+      hint: 'Fais tomber le chevalier dans le trou, de l’autre côté du mur.', win: (w) => w.captured('k'),
+      demo: D().electro().down(235, 580).wait(2).move(235, 200, 1).move(965, 200, 2).move(965, 450, 1).up().electro().wait(2).end() }),
+    crane({ kind: 'salle', solids: room().concat([{ id: 'door', x: 1010, y: 110, w: 30, h: 610, mat: 'wood' }]), bodies: [K('k', 400), { id: 'key', kind: 'key', x: 60, y: 690, respawn: true }],
+      sensors: [Object.assign(btn('btn', 700), { removes: 'door' }), { id: 'keyhole', type: 'keyhole', body: 'key', x: 1060, y: 450, w: 160, h: 200 }],
+      hint: 'Le bouton ouvre la porte. Puis la clé dans la serrure.', win: (w) => w.pressed('keyhole'),
+      demo: D().electro().down(435, 580).wait(2).move(780, 560, 2).up().electro().wait(1.5).electro().down(87, 600).wait(1.5).move(87, 300, 1).move(1140, 300, 2.5).move(1140, 520, 1).wait(1.2).end() }),
+    crane({ kind: 'salle', solids: room().concat(pedestalBtn(1000)), bodies: [K('k', 800, { patrol: { min: 60, max: 900, speed: 55, dir: -1 } })], sensors: [btn('btn', 1020, 540), bell(40)],
+      hint: 'Il file vers la cloche ! Attrape-le avec la grue et pose-le sur le bouton en hauteur.', win: (w) => w.pressed('btn'),
+      demo: D().electro().down((w) => cx(w, 'k'), 580).wait(2).move((w) => cx(w, 'k'), 300, 1).move(1100, 300, 2).move(1100, 400, 0.6).up().electro().wait(2).end() }),
+  ];
+  // 12 · La bobine
+  const coil = (extra) => Object.assign({ tools: [{ type: 'electro' }], turns: 1, turnsNeeded: 4, crane: { x: 400, y: 250 }, craneZone: { x: 80, y: 130, w: 1120, h: 470 } }, extra);
+  EXTRA[12] = [
+    coil({ kind: 'salle', solids: room(), bodies: [herse5('hA', 120, 3), herse5('hB', 520, 5), herse5('hC', 920, 7)],
+      sensors: [latchAt('lA', 'hA', 120, 420, 180, 360), latchAt('lB', 'hB', 520, 420, 180, 360), latchAt('lC', 'hC', 920, 420, 180, 360)],
+      hint: 'Trois herses, de plus en plus lourdes. Ajoute des tours à chaque fois.', win: all(['hA', 'hB', 'hC'], (w, id) => w.latched(id)),
+      demo: D().electro().turn().down(210, 560).wait(0.8).move(210, 330, 2).wait(0.4).up().turn().turn().down(610, 560).wait(0.8).move(610, 330, 2).wait(0.4).up().turn().down(1010, 560).wait(0.8).move(1010, 330, 2).wait(1).end() }),
+    coil({ kind: 'salle', solids: room(), bodies: [K('k', 200)], sensors: [btn('btn', 900)],
+      hint: 'Le chevalier est lourd. Combien de tours de fil pour le soulever ?', win: (w) => w.pressed('btn'),
+      demo: D().electro().turn().turn().turn().down(235, 580).wait(2).move(980, 560, 2).up().electro().wait(2).end() }),
+    coil({ kind: 'salle', solids: room(), bodies: [herse5('grille', 700, 9), K('k', 200)], sensors: [latchAt('lg', 'grille', 700, 420, 180, 360), btn('btn', 710)],
+      hint: 'Le bouton est sous une herse très lourde. Lève-la d’abord.', win: (w) => w.pressed('btn'),
+      demo: D().electro().turn().turn().turn().turn().turn().down(790, 560).wait(0.8).move(790, 330, 2).wait(0.5).up().down(235, 580).wait(2).move(235, 200, 1).move(790, 200, 2).move(790, 560, 1).up().electro().wait(2).end() }),
+    coil({ kind: 'salle', solids: room().concat(pedestalBtn(1000)), bodies: [K('k', 800, { patrol: { min: 60, max: 900, speed: 45, dir: -1 } })], sensors: [btn('btn', 1020, 540), bell(40)],
+      hint: 'Vite, des tours de fil ! Puis attrape le garde avant la cloche.', win: (w) => w.pressed('btn'),
+      demo: D().electro().turn(0.25).turn(0.25).turn(0.25).down((w) => cx(w, 'k'), 580).wait(2).move((w) => cx(w, 'k'), 300, 1).move(1100, 300, 2).move(1100, 400, 0.6).up().electro().wait(2).end() }),
+  ];
+  // 13 · La boussole
+  EXTRA[13] = [
+    Object.assign(multiDark([[1000, 250]]), { kind: 'salle', hint: 'Tout là-haut, cette fois.', demo: darkDemo([[1000, 250]]) }),
+    Object.assign(multiDark([[300, 300], [1000, 500]]), { kind: 'salle', hint: 'Deux cachettes, deux leviers. La boussole montre la suivante.', demo: darkDemo([[300, 300], [1000, 500]]) }),
+    Object.assign(multiDark([[200, 500], [640, 220], [1080, 480]]), { kind: 'salle', hint: 'Trois leviers dans le noir !', demo: darkDemo([[200, 500], [640, 220], [1080, 480]]) }),
+  ];
+  // 14 · Le pôle caché
+  const twoWay = (ks, gaps, extra = {}) => ({ kind: 'salle', tools: bar, canFlip: true, filingsButton: true,
+    solids: room(gaps), bodies: ks.map((k) => Object.assign({ kind: 'knight', y: KY, hiddenPole: true, randomPole: true, pole: 'N' }, k)),
+    sensors: gaps.map(([a, b], i) => trap('t' + i, a, b)), ...extra });
+  EXTRA[14] = [
+    twoWay([{ id: 'k', x: 535 }], [[400, 520], [615, 760]],
+      { hint: 'Pôle caché, deux trous. Qu’il soit attiré ou repoussé, il tombe !', win: (w) => w.captured('k'), demo: D().filings().down(430, 650).wait(2.5).move(330, 650, 1).wait(2).end() }),
+    twoWay([{ id: 'k1', x: 290 }, { id: 'k2', x: 840 }], [[150, 270], [380, 520], [700, 820], [930, 1070]],
+      { hint: 'Deux pôles cachés. Un chevalier à la fois.', win: capturedAll('k1', 'k2'), demo: D().filings().down(190, 650).wait(2.5).move(90, 650, 1).wait(1.5).up().down(740, 650).wait(2.5).move(650, 650, 1).wait(2).end() }),
+    twoWay([{ id: 'k', x: 535, patrol: { min: 525, max: 545, speed: 30, dir: 1 } }], [[400, 520], [615, 760]],
+      { hint: 'Il fait sa ronde entre les deux trous, pôle caché.', win: (w) => w.captured('k'), demo: D().filings().down(430, 650).wait(3).move(330, 650, 1).wait(2).end() }),
+    twoWay([{ id: 'k', x: 450 }], [[300, 430], [540, 680]],
+      { tools: [{ type: 'bar' }, { type: 'double' }], zone: { x: 40, y: 110, w: 200, h: 610 },
+        hint: 'Derrière la vitre, pôle caché. L’aimant double porte plus loin.', win: (w) => w.captured('k'), demo: D().tool(1).filings().down(230, 650).wait(5).end() }),
+  ];
+  EXTRA[14][3].solids.push(glass(240));
+  // 15 · Tout ensemble
+  EXTRA[15] = [
+    { kind: 'salle', tools: bar, solids: room([[450, 580]]).concat(niche(800)), bodies: [K('kA', 300), K('kB', 800), sword()], sensors: [trap('t', 450, 580)],
+      hint: 'Un chevalier pour le trou, un autre pour l’épée.', win: (w) => w.captured('kA') && w.ko('kB'),
+      demo: dropOn(pull(D(), 'kA', 515), 'sword', 'kB').end() },
+    { kind: 'salle', tools: hTools, solids: room([[150, 280]]).concat([{ id: 'door', x: 300, y: 110, w: 40, h: 610, mat: 'wood' }]),
+      bodies: [{ id: 'bolt', kind: 'bolt', x: 275, y: 420, rail: { axis: 'y', min: 290, max: 420 } }, herse('hA', 600), K('k', 950)],
+      sensors: [Object.assign(latchAt('l', 'bolt', 265, 282, 110, 290), { removes: 'door' }), latchAt('lA', 'hA', 600, 420, 180, 360), trap('t', 150, 280)],
+      hint: 'Une porte, une herse, un chevalier. Dans quel ordre ?', win: (w) => w.captured('k'),
+      demo: pull(D().down(380, 300).wait(1.5).up().tool(1).down(690, 560).wait(0.6).move(690, 330, 2).wait(0.5), 'k', 215, 4).end() },
+    { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 1200, h: 310 }, solids: wellSolids(320),
+      bodies: rings([180, 250, 320, 390]).concat([{ id: 'key', kind: 'key', x: 633, y: 710 }, { id: 'k', kind: 'knight', x: 760, y: 310, patrol: { min: 740, max: 1200, speed: 45, dir: 1 } }]),
+      sensors: [{ id: 'keyhole', type: 'keyhole', body: 'key', x: 150, y: 260, w: 150, h: 150 }, trap('tw', 600, 720, 420), bell(1110, 260)], well: { x: 600, y: 420, w: 120, h: 320 },
+      hint: 'D’abord le garde dans le puits, avant la cloche. Ensuite la clé.', win: (w) => w.pressed('keyhole'),
+      demo: fish(pull(D(), 'k', 660).up(), 202, 470, 660, 225).end() },
+    crane({ kind: 'salle', solids: room().concat(niche(800)), bodies: [K('k', 800), sword(200, 624, { hook: false })], sensors: [],
+      hint: 'L’électroaimant peut porter l’épée. Éteins-le au-dessus du chevalier.', win: (w) => w.ko('k'),
+      demo: D().electro().down(213, 600).wait(1).move(213, 250, 1).move(835, 250, 1.5).wait(0.3).electro().wait(2).end() }),
+    crane({ kind: 'salle', solids: room(), bodies: [K('k', 420, { patrol: { min: 400, max: 1200, speed: 50, dir: 1 } }), sword(150, 624, { hook: false })], sensors: [bell(1110)],
+      hint: 'La grue, l’épée, et le garde qui marche vers la cloche. Éteins au bon moment !', win: (w) => w.ko('k'),
+      demo: D().electro().down(163, 600).wait(1).move(163, 250, 1).move(800, 250, 1.5).until(willBeUnder('k', 800, 0.47), 20).electro().wait(2).end() }),
+    (() => { const c = cell(); return { kind: 'salle', tools: hTools, solids: room().concat([c.solid]), bodies: c.bodies.concat([K('k', 520, { patrol: { min: 500, max: 1200, speed: 45, dir: 1 } })]), sensors: [c.sensor, bell(1110)],
+      hint: 'Grille, épée, et un garde qui court à la cloche. Pas de temps à perdre !', win: (w) => w.ko('k'),
+      demo: openCell(D()).move(990, 300, 1.2).until(willBeUnder('k', 990), 20).up().wait(2).end() }; })(),
+  ];
+  // 16 · Le sommet
+  EXTRA[16] = [
+    { kind: 'salle', tools: bar, solids: room().concat([{ id: 'l1', x: 450, y: 110, w: 40, h: 260, mat: 'stone' }, { id: 'l2', x: 850, y: 110, w: 40, h: 260, mat: 'stone' }]),
+      bodies: [{ id: 'key', kind: 'key', x: 150, y: 690, respawn: true },
+        { id: 'g1', kind: 'gate', x: 450, y: 370, w: 40, h: 350, rail: { axis: 'y', min: 20, max: 370 }, cycle: { open: 1.6, closed: 2.0 } },
+        { id: 'g2', kind: 'gate', x: 850, y: 370, w: 40, h: 350, rail: { axis: 'y', min: 20, max: 370 }, cycle: { open: 1.6, closed: 2.0, offset: 1.8 } }],
+      sensors: [{ id: 'keyhole', type: 'keyhole', body: 'key', x: 1060, y: 450, w: 160, h: 200 }],
+      hint: 'Deux portes qui ne s’ouvrent pas en même temps. Attends entre les deux.', win: (w) => w.pressed('keyhole'),
+      demo: D().grab('key').move(177, 600, 0.6).move(390, 600, 1).until(gateJustOpen('g1', 0.5, 0.7), 10).move(670, 600, 0.8).until(gateJustOpen('g2', 0.5, 0.7), 10).move(1140, 600, 0.9).wait(1.2).end() },
+    { kind: 'salle', tools: bar, solids: room([[450, 580]]).concat(niche(300)), bodies: [K('kA', 620, { patrol: { min: 620, max: 1200, speed: 55, dir: 1 } }), K('kB', 300), sword(700, 250)],
+      sensors: [trap('t', 450, 580), bell(1110)], hint: 'La garde du sommet : un garde vers la cloche, un autre dans sa niche.', win: (w) => w.captured('kA') && w.ko('kB'),
+      demo: dropOn(pull(D(), 'kA', 515, 2.5), 'sword', 'kB').end() },
+  ];
+
+  // insérer avant la salle finale de chaque étage
+  for (const f of F) {
+    const extra = EXTRA[f.n]; if (!extra) continue;
+    const last = f.rooms.length - 1;
+    f.rooms.splice(last, 0, ...extra);
+  }
+
   // Propage n/title/taunt/final dans chaque salle, et numérote les marches
   let step = 0;
   for (const f of F) { f.firstStep = step + 1; f.rooms.forEach((r, i) => { r.n = f.n; r.floorTitle = f.title; r.taunt = f.taunt; r.index = i; r.total = f.rooms.length; r.step = ++step; if (f.final && i === f.rooms.length - 1) r.final = true; }); }
@@ -1468,7 +1734,7 @@
     $('#btnHome').onclick = () => { show('title'); renderTitle(); };
     requestAnimationFrame(() => { const c = list.querySelector('.current'); if (c) c.scrollIntoView({ block: 'center' }); });
   }
-  // Escalier de 40 marches (SVG) : en zigzag, 5 volées de 8 ; le héros sur la marche courante, la cage en haut
+  // Escalier (SVG) : en zigzag, des volées de 10 marches ; le héros sur la marche courante, la cage en haut
   function drawStairs(stepNow) {
     const el = $('#stairs'); if (!el) return;
     const per = 10, flights = Math.ceil(STEPS / per), sw = 36, rise = 9, pad = 24;
@@ -2196,8 +2462,7 @@
       ctx.fillStyle = g; ctx.fillRect(0, 90, W, H - 90);
     } else { ctx.fillStyle = 'rgba(0,0,0,0.9)'; ctx.fillRect(0, 90, W, H - 90); }
     ctx.restore();
-    const sec = world.sensor('secret');
-    if (world.won || (sec && sec.done)) return;
+    if (world.won || world.sensors.filter((x) => x.type === 'secret').every((x) => x.done)) return;
     ctx.fillStyle = C.text; ctx.font = 'bold 26px Nunito, sans-serif'; ctx.textAlign = 'center';
     ctx.fillText('Touche l’écran : la boussole montre où chercher.', W / 2, 150);
   }

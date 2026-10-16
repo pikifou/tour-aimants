@@ -580,52 +580,59 @@
 
     // Direction de la boussole (vers la cible désignée par le niveau)
     compassAngle() {
-      const t = this.level.compassTarget; if (!t) return null;
+      let t = null;
+      // plusieurs cachettes : l'aiguille montre le prochain mur secret, puis le prochain levier à baisser
+      const sec = this.sensors.find((s) => s.type === 'secret' && !s.done);
+      if (sec) t = { x: sec.x + sec.w / 2, y: sec.y + sec.h / 2 };
+      else { const lv = this.bodies.find((b) => b.kind === 'lever' && !b.hidden && b.y < b.rail.max - 2); if (lv) t = { x: lv.x + lv.w / 2, y: lv.y + lv.h / 2 }; }
+      if (!t) t = this.level.compassTarget; if (!t) return null;
       return Math.atan2(t.y - this.finger.y, t.x - this.finger.x);
     }
 
     drainEvents() { const e = this.events; this.events = []; return e; }
   }
 
-  // Script de doigt : [['down',x,y,t], ['move',x,y,t], ['up',t], ['flip',t], ['tool',i,t], ['electro',t], ['turn',t], ['filings',t], ['tap',x,y,t], ['wait',t]]
-  // t = temps absolu (secondes) auquel l'action est terminée ; un 'move' interpole depuis la position précédente.
+  // Script de doigt (démo) : chaque étape a une durée relative. Les positions peuvent être des fonctions (w) => valeur,
+  // évaluées au début de l'étape, et 'until' attend qu'une condition sur le monde soit vraie (avec un délai maximum).
+  // ['down',x,y,d] ['move',x,y,d] ['up',d] ['flip',d] ['tool',i,d] ['electro',d] ['turn',d] ['filings',d] ['tap',x,y,d] ['wait',d] ['until',fn,max]
   class Replay {
-    constructor(world, steps) { this.w = world; this.steps = steps; this.i = 0; this.t = 0; this.pos = { x: 0, y: 0 }; this.from = { x: 0, y: 0 }; this.anchorT = 0; this.done = false; }
-    get hand() { const s = this.steps[Math.min(this.i, this.steps.length - 1)]; return { x: this.pos.x, y: this.pos.y, down: this.w.finger.down, label: s && s[0] }; }
+    constructor(world, steps) { this.w = world; this.steps = steps; this.i = 0; this.t = 0; this.pos = { x: 0, y: 0 }; this.from = { x: 0, y: 0 }; this.started = false; this.done = false; }
+    get hand() { return { x: this.pos.x, y: this.pos.y, down: this.w.finger.down }; }
+    val(v) { return typeof v === 'function' ? v(this.w) : v; }
     step(dt) {
-      if (this.done) return;
-      this.t += dt;
       const w = this.w;
-      while (this.i < this.steps.length) {
+      while (!this.done) {
+        if (this.i >= this.steps.length) { this.done = true; return; }
         const s = this.steps[this.i];
-        const endT = s[s.length - 1];
+        if (!this.started) { this.started = true; this.t = 0; this.from = { x: this.pos.x, y: this.pos.y };
+          if (s[0] === 'move' || s[0] === 'down' || s[0] === 'tap') this.target = { x: this.val(s[1]), y: this.val(s[2]) }; }
+        const dur = s[0] === 'until' ? s[2] : s[s.length - 1];
         if (s[0] === 'move') {
-          const x = s[1], y = s[2];
-          if (this.t < endT) {
-            const k = Math.max(0, Math.min(1, (this.t - this.anchorT) / Math.max(1e-6, endT - this.anchorT)));
-            const nx = this.from.x + (x - this.from.x) * k, ny = this.from.y + (y - this.from.y) * k;
-            this.pos = { x: nx, y: ny }; if (w.finger.down) w.pointerMove(nx, ny);
-            return;
-          }
-          this.pos = { x, y }; if (w.finger.down) w.pointerMove(x, y);
-        } else if (this.t < endT) {
-          return;
+          this.t += dt;
+          const k = Math.min(1, this.t / Math.max(1e-6, dur));
+          const nx = this.from.x + (this.target.x - this.from.x) * k, ny = this.from.y + (this.target.y - this.from.y) * k;
+          this.pos = { x: nx, y: ny }; if (w.finger.down) w.pointerMove(nx, ny);
+          if (k < 1) return;
+        } else if (s[0] === 'until') {
+          if (!s[1](w)) { this.t += dt; if (this.t < dur) return; }
         } else {
+          this.t += dt;
+          if (this.t < dur) return;
           switch (s[0]) {
-            case 'down': this.pos = { x: s[1], y: s[2] }; w.pointerDown(s[1], s[2]); break;
+            case 'down': this.pos = { x: this.target.x, y: this.target.y }; w.pointerDown(this.pos.x, this.pos.y); break;
             case 'up': w.pointerUp(); break;
             case 'flip': w.flip(); break;
             case 'tool': w.selectTool(s[1]); break;
             case 'electro': w.toggleElectro(); break;
             case 'turn': w.addTurn(); break;
             case 'filings': w.toggleFilings(); break;
-            case 'tap': this.pos = { x: s[1], y: s[2] }; w.pointerDown(s[1], s[2]); w.pointerUp(); break;
+            case 'tap': this.pos = { x: this.target.x, y: this.target.y }; w.pointerDown(this.pos.x, this.pos.y); w.pointerUp(); break;
             case 'wait': break;
           }
+          dt = 0;
         }
-        this.i++; this.anchorT = endT; this.from = { x: this.pos.x, y: this.pos.y };
+        this.i++; this.started = false;
       }
-      this.done = true;
     }
   }
 
