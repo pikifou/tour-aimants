@@ -8,7 +8,9 @@
   const fr = (t) => t.replace(/ ([!?:;])/g, ' $1');
   const TOTAL = FLOORS.length;
   const IMG = {};
-  const ASSETS = ['armure', 'armure_tas', 'epouvantail', 'epee', 'sorciere', 'sorciere_balai', 'sorciere_vol', 'chat_cage', 'chat_saute', 'chat_assis', 'magnetite'];
+  const ASSETS = ['armure', 'armure_tas', 'epouvantail', 'epee', 'sorciere', 'sorciere_balai', 'sorciere_vol', 'chat_cage', 'chat_saute', 'chat_assis', 'magnetite', 'heros'];
+  const HERO = { h: 195, handX: 0.905, handY: 0.02 };   // taille à l'écran, et position de la main levée dans l'image (fractions)
+  const STEPS = FLOORS.STEPS;
   const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // ---------- progression ----------
@@ -166,12 +168,38 @@
       list.appendChild(row);
     }
     const cur = FLOORS[progress.floor - 1];
-    $('#towerText').textContent = progress.done.length ? fr(`La sorcière est montée à l'étage ${progress.floor} avec le chat !`) : fr('Le chat est au premier étage.');
+    const stepNow = cur.firstStep + Math.min(progress.room, cur.rooms.length - 1);
+    $('#towerText').textContent = fr(progress.done.length ? `Marche ${stepNow} sur ${STEPS}. La sorcière est montée à l'étage ${progress.floor} avec le chat !` : `Quarante marches jusqu'au chat. Tu es sur la première.`);
+    drawStairs(stepNow);
     const roomLabel = progress.room ? ` (${roomName(cur.rooms[progress.room])})` : '';
     $('#btnClimb').textContent = `Monter à l'étage ${progress.floor}${roomLabel}`;
     $('#btnClimb').onclick = () => openCard(progress.floor);
     $('#btnHome').onclick = () => { show('title'); renderTitle(); };
     requestAnimationFrame(() => { const c = list.querySelector('.current'); if (c) c.scrollIntoView({ block: 'center' }); });
+  }
+  // Escalier de 40 marches (SVG) : en zigzag, 5 volées de 8 ; le héros sur la marche courante, la cage en haut
+  function drawStairs(stepNow) {
+    const el = $('#stairs'); if (!el) return;
+    const per = 10, flights = Math.ceil(STEPS / per), sw = 36, rise = 9, pad = 24;
+    const Wd = per * sw + pad * 2 + 70, Hd = STEPS * rise + pad * 2 + 90;
+    let out = `<svg viewBox="0 0 ${Wd} ${Hd}" width="${Wd}" height="${Hd}" xmlns="http://www.w3.org/2000/svg">`;
+    const pos = [];
+    for (let i = 0; i < STEPS; i++) {
+      const fl = Math.floor(i / per), j = i % per;
+      const dir = fl % 2 === 0 ? 1 : -1;
+      const x = dir === 1 ? pad + j * sw : pad + (per - 1 - j) * sw;
+      const y = Hd - pad - 50 - i * rise;
+      pos.push({ x, y });
+      const done = i + 1 < stepNow, cur = i + 1 === stepNow;
+      const floorStart = FLOORS.some((f) => f.firstStep === i + 1);
+      out += `<rect x="${x}" y="${y}" width="${sw - 2}" height="${rise + 6}" rx="3" fill="${cur ? '#ffb020' : done ? '#3fbf5a' : '#5a4b7a'}" ${floorStart ? 'stroke="#fff6e6" stroke-width="2"' : 'stroke="#1b1430" stroke-width="1"'}/>`;
+    }
+    const p = pos[Math.min(STEPS, stepNow) - 1];
+    out += `<image href="assets/heros.png" x="${p.x + 2}" y="${p.y - 54}" height="58"/>`;
+    const top = pos[STEPS - 1];
+    out += `<image href="assets/chat_cage.png" x="${top.x - 20 + (Math.floor((STEPS - 1) / per) % 2 === 0 ? 40 : -30)}" y="${top.y - 76}" height="76"/>`;
+    out += '</svg>';
+    el.innerHTML = out;
   }
   function roomName(r) { return r.kind === 'atelier' ? 'Atelier' : `Salle ${r.index + 1 - (r.total === 3 ? 1 : 0)}`; }
 
@@ -196,6 +224,7 @@
   let shake = 0, winAt = 0, idleT = 0, hintUntil = 0, hintCount = 0, flashes = [], particles = [], fx = {}, witchFx = { t: 0, text: '' };
   let demo = null, demoMode = null, demoTimer = 0, bannerT = 0, bannerText = '', bannerSub = '', flashWhite = 0, roomClearT = 0;
   let flight = null;   // { phase: 'in'|'hover'|'out', t, from, to, cageTaken }
+  const hero = { x: 0, y: 0, face: 1, vx: 0, shown: false };
 
   function layout() {
     const de = document.documentElement;
@@ -219,8 +248,8 @@
   function startRoom(n, i) {
     floor = FLOORS[n - 1]; room = floor.rooms[Math.min(i, floor.rooms.length - 1)];
     resetWorld();
-    $('#hudFloor').textContent = `Étage ${n}`;
-    $('#hudTitle').textContent = floor.title;
+    $('#hudFloor').textContent = `Marche ${room.step} / ${STEPS}`;
+    $('#hudTitle').textContent = `Étage ${n} · ${floor.title}`;
     renderDots();
     buildHud();
     $('#hint').hidden = true; hintCount = 0;
@@ -330,6 +359,7 @@
     if (hintUntil && t > hintUntil) { $('#hint').hidden = true; hintUntil = 0; }
     if (shake > 0) shake -= dt;
     if (bannerT > 0) bannerT -= dt;
+    updateHero(dt);
     if (flashWhite > 0) flashWhite -= dt;
     if (witchFx.t > 0) witchFx.t -= dt;
     for (const k in fx) { fx[k].sq *= Math.exp(-7 * dt); fx[k].pop *= Math.exp(-6 * dt); }
@@ -339,6 +369,28 @@
     if (winAt > 0 && t - winAt > 1500) { winAt = -1; onWin(); }
     if (flight) updateFlight(dt);
     draw(t / 1000, dt);
+  }
+  function updateHero(dt) {
+    const f = world.finger;
+    if (!f.down) { hero.shown = false; return; }
+    if (!hero.shown) { hero.x = f.x; hero.y = f.y; hero.shown = true; hero.vx = 0; }
+    // le corps suit la main avec un peu de retard, pour un balancement naturel
+    const k = 1 - Math.exp(-14 * dt);
+    hero.vx = (f.x - hero.x) / Math.max(dt, 1e-3);
+    hero.x += (f.x - hero.x) * k; hero.y += (f.y - hero.y) * k;
+    if (hero.vx > 60) hero.face = 1; else if (hero.vx < -60) hero.face = -1;
+  }
+  function drawHero(x, y, time) {
+    const img = IMG.heros; if (!img) return;
+    const h = HERO.h, w = img.width * h / img.height;
+    const lean = Math.max(-0.25, Math.min(0.25, -hero.vx / 2500));
+    const bob = Math.sin(time * 3) * 3;
+    ctx.save();
+    ctx.translate(x, y);                       // la main levée est sur le doigt
+    ctx.rotate(lean);
+    ctx.scale(hero.face, 1);
+    ctx.drawImage(img, -w * HERO.handX, -h * HERO.handY + bob + 8, w, h);
+    ctx.restore();
   }
   function updateGauge() {
     const g = $('#gauge'); if (g.hidden) return;
@@ -699,13 +751,13 @@
       // étincelles qui tournent
       for (let i = 0; i < 3; i++) { const a = time * 3 + i * 2.1; ctx.fillStyle = 'rgba(255,240,160,0.9)'; ctx.beginPath(); ctx.arc(x + Math.cos(a) * 52, y + Math.sin(a) * 40, 3, 0, 7); ctx.fill(); }
     }
-    ctx.fillStyle = C.hand; ctx.beginPath(); ctx.arc(x, y - 44, 22, 0, 7); ctx.fill(); ctx.fillRect(x - 14, y - 44, 28, 26);
+    drawHero(hero.x, hero.y, time);
     if (t.type === 'bar') drawBar(x - 36, y - 15, 72, 30, w.flipped, false);
     else if (t.type === 'double') { drawBar(x - 42, y - 30, 84, 28, w.flipped, false); drawBar(x - 42, y + 2, 84, 28, w.flipped, false); }
     else if (t.type === 'horseshoe') drawHorseshoe(x, y, w.flipped);
     else if (t.type === 'nail') drawNail(x, y, w.nailCharge);
     else if (t.type === 'compass') drawCompass(x, y);
-    if (demo) { ctx.fillStyle = C.text; ctx.font = 'bold 24px Nunito, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('Regarde…', x, y - 76); }
+    if (demo) { ctx.fillStyle = C.text; ctx.font = 'bold 24px Nunito, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('Regarde…', x, y - 60); }
     ctx.restore();
   }
   function drawHorseshoe(x, y, flipped) {

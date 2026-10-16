@@ -25,9 +25,11 @@
       svg: svg(`${magnet(40, 20, 100, 36)}<rect x="84" y="56" width="12" height="90" fill="#cfd3d9"/><rect x="72" y="56" width="36" height="8" fill="#c9a227"/>
         <text x="190" y="110" font-size="40">→</text>
         <rect x="300" y="60" width="12" height="90" fill="#cfd3d9"/><rect x="288" y="60" width="36" height="8" fill="#c9a227"/>${arrow(350, 60, 350, 150)}`) },
-    { title: 'Les pôles', lines: ['Un aimant a deux bouts :', 'le pôle Nord et le pôle Sud.', 'Nord et Sud se collent.', 'Nord et Nord se repoussent.'],
+    { title: 'Les pôles', lines: ['Un aimant a deux bouts :', 'le pôle Nord (N) et le pôle Sud (S).', 'Nord et Sud se collent.', 'Nord et Nord se repoussent.'],
       svg: svg(`${magnet(30, 30, 110, 40)}${magnet(200, 30, 110, 40)}${arrow(145, 50, 165, 50)}${arrow(195, 50, 175, 50)}
-        ${magnet(30, 120, 110, 40)}${magnet(240, 120, 110, 40, true)}${arrow(170, 140, 150, 140)}${arrow(210, 140, 230, 140)}`) },
+        <text x="57" y="22" font-size="15" text-anchor="middle" fill="${B}" font-weight="700">Sud</text><text x="112" y="22" font-size="15" text-anchor="middle" fill="${R}" font-weight="700">Nord</text>
+        ${magnet(30, 120, 110, 40)}${magnet(240, 120, 110, 40, true)}${arrow(170, 140, 150, 140)}${arrow(210, 140, 230, 140)}
+        <text x="112" y="180" font-size="15" text-anchor="middle" fill="${R}" font-weight="700">Nord</text><text x="267" y="180" font-size="15" text-anchor="middle" fill="${R}" font-weight="700">Nord</text>`) },
     { title: 'La portée', lines: ["Près de l'aimant, ça tire fort.", "Loin de l'aimant, ça tire peu.", 'Très loin, ça ne tire plus.'],
       svg: svg(`<circle cx="80" cy="100" r="80" fill="none" stroke="${B}" stroke-dasharray="6 6"/><circle cx="80" cy="100" r="130" fill="none" stroke="${B}" stroke-dasharray="4 8" opacity=".5"/>
         ${magnet(30, 82, 100, 36)}${nail(180, 80)}${arrow(176, 100, 150, 100)}${nail(270, 80)}<line x1="266" y1="100" x2="250" y2="100" stroke="${K}" stroke-width="3"/>${nail(370, 80)}`) },

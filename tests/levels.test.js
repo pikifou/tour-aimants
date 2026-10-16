@@ -39,11 +39,11 @@ test('hors de la zone, rien ne bouge (3, salle 1)', () => {
   assert.strictEqual(w.body('bolt').y, 420); assert.ok(w.fingerBlocked);
 });
 test('la plaque de fer bloque (9, salle 1)', () => {
-  const w = new World(FLOORS[8].rooms[1]); w.pointerDown(610, 300); for (let i = 0; i < 120; i++) w.step(1 / 60);
+  const w = new World(FLOORS[8].rooms[0]); w.pointerDown(610, 300); for (let i = 0; i < 120; i++) w.step(1 / 60);
   assert.strictEqual(w.body('bolt').x, 780);
 });
 test('un clou non aimanté ne fait rien, et la charge disparaît (10, salle 1)', () => {
-  const w = new World(FLOORS[9].rooms[1]); w.pointerDown(620, 300); for (let i = 0; i < 120; i++) w.step(1 / 60);
+  const w = new World(FLOORS[9].rooms[0]); w.pointerDown(620, 300); for (let i = 0; i < 120; i++) w.step(1 / 60);
   assert.strictEqual(w.body('bolt').y, 420);
   w.nailCharge = 1; w.pointerUp(); for (let i = 0; i < 20 * 60; i++) w.step(1 / 60);
   assert.ok(w.nailCharge < 0.05);
@@ -57,4 +57,9 @@ test('trop faible avec 1 ou 3 tours (12, atelier)', () => {
 test('la porte est bloquée tant que l’aimant géant tient la cage (16)', () => {
   const w = new World(FLOORS[15].rooms[0]); w.pointerDown(990, 560); for (let i = 0; i < 60; i++) w.step(1 / 60);
   assert.ok(!w.body('porte').attached);
+});
+
+test('15/3 : l’aimant simple ne porte pas assez loin', () => {
+  const w = new World(FLOORS[14].rooms[2]); w.flip(); w.pointerDown(230, 560); for (let i = 0; i < 180; i++) w.step(1 / 60);
+  assert.strictEqual(w.body('k').x, 480);
 });

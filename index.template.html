@@ -44,8 +44,8 @@
   #intro p { margin: 4px 0; animation: lineIn .5s ease-out both; }
 
   /* tour */
-  #tower { flex-direction: row; gap: 50px; padding: 20px 40px; }
-  #floors { display: flex; flex-direction: column; gap: 4px; width: 620px; }
+  #tower { flex-direction: row; gap: 40px; padding: 20px 40px; }
+  #floors { display: flex; flex-direction: column; gap: 4px; width: 560px; }
   .floor { display: grid; grid-template-columns: 50px 1fr 60px; align-items: center; gap: 12px; text-align: left; border-radius: 12px; padding: 4px 16px;
     background: var(--panel); color: var(--fg); box-shadow: inset 0 0 0 2px #4a3d6a; font-size: 21px; min-height: 40px; }
   .floor .num { font-family: var(--display); font-size: 24px; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -62,7 +62,7 @@
   .dots i.ok, #hudDots i.ok { background: var(--ok); }
   .floor.current .dots i { background: rgba(0,0,0,0.2); } .floor.current .dots i.ok { background: #1f7a33; }
   #towerSide { display: flex; flex-direction: column; align-items: center; gap: 22px; width: 420px; }
-  #towerSide img { height: 300px; width: auto; animation: bob 3s ease-in-out infinite; }
+  #stairs svg { display: block; max-height: 400px; width: auto; }
   #towerSide p { margin: 0; font-size: 24px; font-weight: 800; text-align: center; color: var(--muted); }
 
   /* fiche */
@@ -136,7 +136,7 @@
   <section id="tower" class="screen" hidden>
     <div id="floors" role="list"></div>
     <div id="towerSide">
-      <img src="assets/sorciere_balai.png" alt="La sorcière s'enfuit avec le chat">
+      <div id="stairs" aria-label="Les 40 marches"></div>
       <p id="towerText"></p>
       <button id="btnClimb" type="button">Monter</button>
       <button id="btnHome" class="ghost" type="button">Accueil</button>

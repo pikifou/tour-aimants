@@ -1,10 +1,10 @@
 /* Service worker : le jeu entier est mis en cache à l'installation, et joue hors ligne.
-   0b5b4a7700 est remplacé à chaque build : nouveau cache, ancien supprimé. */
-const CACHE = 'tour-aimants-0b5b4a7700';
+   13137c7673 est remplacé à chaque build : nouveau cache, ancien supprimé. */
+const CACHE = 'tour-aimants-13137c7673';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png', './favicon.png',
-  "./assets/armure.png", "./assets/armure_tas.png", "./assets/chat_assis.png", "./assets/chat_cage.png", "./assets/chat_saute.png", "./assets/epee.png", "./assets/epouvantail.png", "./assets/magnetite.png", "./assets/sorciere.png", "./assets/sorciere_balai.png", "./assets/sorciere_vol.png", "./assets/tour.jpg"
+  "./assets/armure.png", "./assets/armure_tas.png", "./assets/chat_assis.png", "./assets/chat_cage.png", "./assets/chat_saute.png", "./assets/epee.png", "./assets/epouvantail.png", "./assets/heros.png", "./assets/heros_helice.png", "./assets/magnetite.png", "./assets/sorciere.png", "./assets/sorciere_balai.png", "./assets/sorciere_vol.png", "./assets/tour.jpg"
 ];
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
