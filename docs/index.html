@@ -1436,16 +1436,25 @@
     return { x: (e.clientY - L.Y) / L.s, y: (L.X - e.clientX) / L.s };
   }
   let activePointer = null;
+  const GRIP = 115;        // distance doigt → aimant (unités logiques)
+  let gripOffset = GRIP;
   canvas.addEventListener('pointerdown', (e) => {
     if (!world) return;
     unlockAudio();
     if (demo) { takeControl(); }
     if (world.won || activePointer !== null) return;
     activePointer = e.pointerId; try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
-    const p = toLogical(e); world.pointerDown(p.x, p.y); idleT = 0;
+    const raw = toLogical(e);
+    // Le doigt se pose sur le bonhomme ; l'aimant est dans sa main, plus haut, bien visible.
+    // Exception : taper un mur secret ou attraper un levier se fait là où on touche.
+    const direct = world.sensors.some((s) => s.type === 'secret' && !s.done && raw.x >= s.x && raw.x <= s.x + s.w && raw.y >= s.y && raw.y <= s.y + s.h)
+      || world.bodies.some((b) => b.grab && !b.hidden && raw.x >= b.x - 25 && raw.x <= b.x + b.w + 25 && raw.y >= b.y - 25 && raw.y <= b.y + b.h + 25);
+    gripOffset = direct ? 0 : GRIP;
+    const p = { x: raw.x, y: raw.y - gripOffset };
+    world.pointerDown(p.x, p.y); idleT = 0;
     spawnRing(p.x, p.y, 'rgba(255,230,140,0.9)', 30);
   });
-  canvas.addEventListener('pointermove', (e) => { if (!world || e.pointerId !== activePointer) return; const p = toLogical(e); world.pointerMove(p.x, p.y); });
+  canvas.addEventListener('pointermove', (e) => { if (!world || e.pointerId !== activePointer) return; const p = toLogical(e); world.pointerMove(p.x, p.y - gripOffset); });
   const up = (e) => { if (!world || e.pointerId !== activePointer) return; activePointer = null; world.pointerUp(); };
   canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
 
