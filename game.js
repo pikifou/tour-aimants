@@ -50,6 +50,7 @@
     captured: () => { tone(600, 0.45, 'sawtooth', 0.06, -480); noise(0.3, 0.05, 400, 0.3); },
     ko: () => { tone(140, 0.25, 'square', 0.09, -80); noise(0.25, 0.08, 300); },
     button: () => { tone(520, 0.1, 'square', 0.06); tone(780, 0.12, 'square', 0.05, 0, 0.09); },
+    door: () => { noise(0.9, 0.06, 180, 0.4); tone(160, 0.7, 'sawtooth', 0.04, 140); tone(523, 0.12, 'triangle', 0.07, 0, 0.5); tone(784, 0.2, 'triangle', 0.07, 0, 0.62); },
     latch: () => { tone(300, 0.06, 'square', 0.08); tone(220, 0.1, 'square', 0.07, 0, 0.06); },
     land: () => noise(0.12, 0.05, 250),
     secret: () => { tone(300, 0.3, 'sawtooth', 0.06, 200); noise(0.5, 0.06, 200); },
@@ -452,7 +453,8 @@
       case 'reveal': SFX.reveal(); if (b) { spawnBurst(c.x, c.y, 18, '#ffe066', 260); if (b.kind === 'key' && !demo) banner('La clé de Mei Mei !', 'Apporte-la jusqu’à sa cage.', 2.4); } break;
       case 'objective': if (room.openOnObjective) spawnBurst(W / 2, 400, 20, '#bfe8ff', 300); break;
       case 'respawn': if (b) { spawnSmoke(c.x, c.y, 10, 0.8); spawnRing(c.x, c.y, '#ffe066', 40); } break;
-      case 'latched': SFX.latch(); if (b) spawnBurst(c.x, b.y, 12, '#cfd3d9', 200); break;
+      case 'latched': SFX.latch(); if (b) { spawnBurst(c.x, b.y, 12, '#9fd6a8', 200); flashes.push({ x: c.x, y: b.y - 20, t: 0.7, text: 'Clic !' }); } break;
+      case 'door': SFX.door(); shake = Math.max(shake, 0.2); spawnSmoke(ev.x, 140, 16, 1); flashes.push({ x: ev.x, y: 300, t: 1.4, text: 'La porte s’ouvre !' }); break;
       case 'secret': SFX.secret(); shake = Math.max(shake, 0.2); break;
       case 'unhook': tone(1200, 0.05, 'square', 0.04); break;
       case 'win': if (!demo) { SFX.win(); buzz([30, 40, 60]); witchReact(room.final ? 'Nooon !' : 'Grrr !'); } break;
@@ -568,6 +570,7 @@
     if (lv.well) { ctx.fillStyle = C.pit; ctx.fillRect(lv.well.x, lv.well.y, lv.well.w, lv.well.h); }
     for (const s of lv.sensors || []) if (s.type === 'trap') { ctx.fillStyle = C.pit; ctx.fillRect(s.x, s.y - 2, s.w, 100); }
     for (const s of w.solids) drawSolid(s);
+    drawOpeningDoors(w);
     drawSensors();
     if (lv.lodestone) drawImageFit(IMG.magnetite, lv.lodestone);
     if (lv.kind === 'atelier') drawSign();
@@ -577,6 +580,7 @@
     slideTick += dt;
     if (slideTick > 0.07) { slideTick = 0; for (const b of w.bodies) if (b.grounded && Math.abs(b.vx) > 90 && !b.hidden && !b.captured) spawnSmoke(b.x + b.w / 2 - Math.sign(b.vx) * b.w / 2, b.y + b.h, 1, 0.5); }
     for (const b of w.bodies) drawBody(b, time);
+    drawKeepers(w);
     if (w.filings) drawFilings();
     drawPulls(time);
     drawMagnet(time);
@@ -665,6 +669,7 @@
         if (!s.pressed) { ctx.strokeStyle = C.zoneLine; ctx.setLineDash([8, 8]); ctx.lineWidth = 2; ctx.strokeRect(s.x, s.y, s.w, s.h); ctx.setLineDash([]); }
       } else if (s.type === 'latch') {
         const b = world.body(s.body);
+        if (b && b.kind === 'bolt' && b.lockStart) withLift(b.rail.axis === 'y' ? doorLift(world, s.door) : null, () => drawBoltTrack(b, s));
         if (b && b.kind === 'herse') { ctx.fillStyle = '#2c3036'; ctx.fillRect(s.x - 12, s.y - 60, 12, 30); ctx.fillRect(s.x + s.w, s.y - 60, 12, 30); }
       } else if (s.type === 'secret' && s.done) {
         ctx.fillStyle = C.pit; ctx.fillRect(s.x, s.y, s.w, s.h);
@@ -745,7 +750,7 @@
         break;
       case 'straw': drawImageFit(IMG.epouvantail, { x: b.x - 10, y: b.y, w: b.w + 20, h: b.h }); break;
       case 'sword': drawImageFit(IMG.epee, { x: b.x - 10, y: b.y, w: b.w + 20, h: b.h }); break;
-      case 'bolt': drawBolt(b); break;
+      case 'bolt': { const sn = boltSensor(world, b); withLift(sn && b.rail.axis === 'y' ? doorLift(world, sn.door) : null, () => drawBolt(b)); break; }
       case 'ring':
         ctx.strokeStyle = '#8e959e'; ctx.lineWidth = 9; ctx.beginPath(); ctx.arc(b.x + b.w / 2, b.y + b.h / 2, b.w / 2 - 5, 0, 7); ctx.stroke();
         ctx.strokeStyle = '#c9ced4'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(b.x + b.w / 2, b.y + b.h / 2, b.w / 2 - 7, Math.PI * 1.1, Math.PI * 1.6); ctx.stroke();
@@ -770,11 +775,98 @@
     ctx.fillStyle = C.gold; ctx.font = 'bold 26px Fredoka, sans-serif'; ctx.textAlign = 'center';
     for (let i = 0; i < 4; i++) { const a = time * 4 + i * Math.PI / 2; ctx.fillText('★', x + Math.cos(a) * 46, y + Math.sin(a) * 12); }
   }
+  // Verrou : il glisse dans sa rainure ; au départ il est coincé dans ses crochets (la gâche) et tient la porte.
+  function boltTarget(b, s) {
+    const r = b.rail, ax = r.axis === 'x';
+    const c = ax ? s.x + s.w / 2 - b.w / 2 : (s.snapY ?? s.y + s.h / 2 - b.h / 2);
+    const end = Math.abs(c - r.min) < Math.abs(c - r.max) ? r.min : r.max;
+    return ax ? { x: end, y: b.lockStart.y } : { x: b.lockStart.x, y: end };
+  }
+  function drawBoltTrack(b, s) {
+    const t = boltTarget(b, s), a = b.lockStart;
+    const x0 = Math.min(a.x, t.x) - 5, y0 = Math.min(a.y, t.y) - 5, x1 = Math.max(a.x, t.x) + b.w + 5, y1 = Math.max(a.y, t.y) + b.h + 5;
+    ctx.fillStyle = 'rgba(18,10,28,0.55)'; rr(x0, y0, x1 - x0, y1 - y0, 10); ctx.fill();
+    if (b.latched) return;
+    // chevrons qui montrent dans quel sens tirer
+    const ax = b.rail.axis === 'x', dir = Math.sign(ax ? t.x - a.x : t.y - a.y) || -1, now = performance.now() / 1000;
+    ctx.strokeStyle = 'rgba(140,240,160,0.85)'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+    for (let i = 0; i < 3; i++) {
+      const k = ((i / 3 + now * 0.6) % 1);
+      const px = ax ? a.x + b.w / 2 + (t.x - a.x) * k : a.x + b.w / 2, py = ax ? a.y + b.h / 2 : a.y + b.h / 2 + (t.y - a.y) * k;
+      ctx.globalAlpha = Math.sin(k * Math.PI);
+      ctx.beginPath();
+      if (ax) { ctx.moveTo(px - dir * 8, py - 9); ctx.lineTo(px + dir * 4, py); ctx.lineTo(px - dir * 8, py + 9); }
+      else { ctx.moveTo(px - 10, py - dir * 8); ctx.lineTo(px, py + dir * 4); ctx.lineTo(px + 10, py - dir * 8); }
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    // la place libre, au bout de la rainure
+    ctx.strokeStyle = 'rgba(140,240,160,0.9)'; ctx.setLineDash([8, 6]); ctx.lineWidth = 3; rr(t.x, t.y, b.w, b.h, 8); ctx.stroke(); ctx.setLineDash([]);
+  }
+  // les crochets (gâche) devant le verrou : tant qu'il est dedans, la porte reste fermée
+  function drawKeepers(w) {
+    for (const s of w.sensors) {
+      if (s.type !== 'latch') continue;
+      const b = w.body(s.body); if (!b || b.kind !== 'bolt' || !b.lockStart) continue;
+      withLift(doorLift(w, s.door), () => drawKeeper(b, s));
+    }
+  }
+  function drawKeeper(b, s) {
+    {
+      const a = b.lockStart, t = boltTarget(b, s);
+      ctx.strokeStyle = '#1f2328'; ctx.lineWidth = 7; ctx.lineJoin = 'round';
+      if (b.rail.axis === 'x') {
+        // un anneau sur la porte : le verrou glisse dedans
+        const lx = a.x + b.w - (t.x < a.x ? 26 : 74);
+        ctx.strokeRect(lx, a.y - 8, 18, b.h + 16);
+      } else {
+        const up = t.y < a.y;
+        for (const ex of [a.x - 4, a.x + b.w - 14]) {
+          ctx.beginPath();
+          if (up) { ctx.moveTo(ex, a.y - 4); ctx.lineTo(ex, a.y + b.h + 7); ctx.lineTo(ex + 18, a.y + b.h + 7); ctx.lineTo(ex + 18, a.y - 4); }
+          else { ctx.moveTo(ex, a.y + b.h + 4); ctx.lineTo(ex, a.y - 7); ctx.lineTo(ex + 18, a.y - 7); ctx.lineTo(ex + 18, a.y + b.h + 4); }
+          ctx.stroke();
+        }
+      }
+    }
+  }
+  // la porte qui se lève dans le plafond
+  // une porte qui se lève emporte ses verrous et ses crochets
+  function doorLift(w, id) {
+    const d = id && w.openingDoors.find((x) => x.id === id); if (!d) return null;
+    const k = Math.min(1, (w.time - d.t0) / 0.9);
+    return { d, done: k >= 1, dy: -(k * k * (3 - 2 * k)) * d.h };
+  }
+  function withLift(lift, fn) {
+    if (!lift) { fn(); return; }
+    if (lift.done) return;
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 110, W, 610); ctx.clip(); ctx.translate(0, lift.dy); fn(); ctx.restore();
+  }
+  function boltSensor(w, b) { return w.sensors.find((x) => x.type === 'latch' && x.body === b.id); }
+  function drawOpeningDoors(w) {
+    for (const d of w.openingDoors) {
+      const k = Math.min(1, (w.time - d.t0) / 0.9); if (k >= 1) continue;
+      const e = k * k * (3 - 2 * k);
+      ctx.save(); ctx.beginPath(); ctx.rect(d.x - 10, 110, d.w + 20, 610); ctx.clip();
+      drawSolid(Object.assign({}, d, { y: d.y - e * d.h }));
+      ctx.restore();
+    }
+  }
+  function drawPadlock(x, y, open) {
+    ctx.save(); ctx.translate(x, y);
+    ctx.strokeStyle = open ? '#2e8b45' : '#8a6508'; ctx.lineWidth = 3.5;
+    ctx.beginPath(); if (open) ctx.arc(5, -9, 6, Math.PI, 0); else ctx.arc(0, -5, 6, Math.PI, 0); ctx.stroke();
+    if (!open) { ctx.beginPath(); ctx.moveTo(-6, -5); ctx.lineTo(-6, 0); ctx.moveTo(6, -5); ctx.lineTo(6, 0); ctx.stroke(); }
+    ctx.fillStyle = open ? '#5fd17a' : C.gold; rr(-9, -3, 18, 14, 3); ctx.fill();
+    ctx.fillStyle = '#2b2b2b'; ctx.fillRect(-1.5, 1, 3, 6);
+    ctx.restore();
+  }
   function drawBolt(b) {
     ctx.fillStyle = '#2c3036'; rr(b.x - 8, b.y - 6, b.w + 16, b.h + 12, 6); ctx.fill();
     ctx.fillStyle = b.latched ? '#9fd6a8' : '#9aa1aa'; rr(b.x, b.y, b.w, b.h, 8); ctx.fill();
     ctx.fillStyle = '#d7dce2'; rr(b.x + 6, b.y + 4, b.w - 12, 5, 3); ctx.fill();
-    ctx.fillStyle = '#5a6068'; ctx.beginPath(); ctx.arc(b.x + b.w / 2, b.y + b.h / 2, 5, 0, 7); ctx.fill();
+    if (b.lockStart) drawPadlock(b.x + b.w / 2, b.y + b.h / 2 - 2, b.latched);
+    else { ctx.fillStyle = '#5a6068'; ctx.beginPath(); ctx.arc(b.x + b.w / 2, b.y + b.h / 2, 5, 0, 7); ctx.fill(); }
   }
   function drawGate(b) {
     ctx.fillStyle = '#7a4a1e'; ctx.fillRect(b.x, b.y, b.w, b.h);

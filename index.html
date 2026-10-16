@@ -274,6 +274,16 @@
         return body;
       });
       this.sensors = (level.sensors || []).map((s) => Object.assign({ pressed: false, done: false }, s));
+      // Verrous de porte : chaque verrou est engagé dans la gâche d'une porte en bois. Quand tous les verrous
+      // d'une porte sont tirés hors de leur gâche, la porte se lève.
+      this.openingDoors = [];
+      for (const sn of this.sensors) {
+        if (sn.type !== 'latch') continue;
+        const b = this.body(sn.body); if (!b || b.kind !== 'bolt') continue;
+        if (sn.removes) { sn.door = sn.removes; sn.removes = null; }
+        if (!sn.door) { const d = this.solids.find((x) => x.mat === 'wood' && /^door/.test(x.id) && b.x < x.x + x.w && b.x + b.w > x.x); if (d) sn.door = d.id; }
+        b.lockStart = { x: b.x, y: b.y };
+      }
       this.tools = (level.tools || []).map((t) => Object.assign({}, TOOLS[t.type], t));
       this.toolIndex = 0;
       this.flipped = false;
@@ -611,6 +621,7 @@
             if (sn.snapY !== undefined) b.y = sn.snapY;
             this.events.push({ type: 'latched', id: b.id });
             if (sn.removes) { this.openSolids(sn.removes); this.events.push({ type: 'open', id: sn.id }); }
+            if (sn.door) this.openDoorIfFree(sn.door);
           }
         } else if (sn.type === 'alarm') {
           if (this.won) continue;            // salle déjà gagnée : la cloche ne compte plus
@@ -653,6 +664,18 @@
       }
       return true;
     }
+
+    // la porte se lève quand plus aucun verrou ne la tient
+    openDoorIfFree(id) {
+      const locks = this.sensors.filter((x) => x.type === 'latch' && x.door === id);
+      if (!locks.every((x) => this.body(x.body).latched)) return;
+      const d = this.solids.find((x) => x.id === id); if (!d) return;
+      this.openingDoors.push(Object.assign({}, d, { t0: this.time }));
+      this.openSolids(id);
+      this.events.push({ type: 'door', id, x: d.x + d.w / 2 });
+    }
+    // verrous d'une porte encore fermés (pour les cadenas dessinés sur la porte)
+    doorLocks(id) { return this.sensors.filter((x) => x.type === 'latch' && x.door === id).map((x) => this.body(x.body)); }
 
     openSolids(ids) {
       const list = Array.isArray(ids) ? ids : [ids];
@@ -951,21 +974,21 @@
   F.push({ n: 3, title: 'La serrure', taunt: 'Ma porte est fermée à clé !', rooms: [
     { kind: 'atelier', tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 }, solids: room().concat([door(640)]),
       bodies: [{ id: 'bolt', kind: 'bolt', x: 630, y: 420, rail: { axis: 'y', min: 290, max: 420 } }], sensors: [latchAt('l', 'bolt', 620, 282, 110, 290)],
-      hint: 'Reste à gauche de la porte. Tire le verrou vers le haut.', win: (w) => w.latched('bolt'),
+      hint: 'Le verrou est coincé dans ses crochets : la porte est fermée. Tire-le vers le haut pour le sortir des crochets.', win: (w) => w.latched('bolt'),
       demo: D().down(600, 430).move(600, 280, 1.5).wait(1.5).end() },
     { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 }, solids: room().concat([door(640)]),
       bodies: [{ id: 'bolt', kind: 'bolt', x: 630, y: 420, rail: { axis: 'y', min: 290, max: 420 } }], sensors: [latchAt('l', 'bolt', 620, 282, 110, 290)],
-      cage: { x: 1000, y: 540 }, witch: { x: 860, y: 560 }, hint: 'Le verrou est en fer, derrière la porte en bois. Fais-le glisser vers le haut.', win: (w) => w.latched('bolt'),
+      cage: { x: 1000, y: 540 }, witch: { x: 860, y: 560 }, hint: 'Sors le verrou de ses crochets, dans le sens des flèches. Quand le cadenas est vert, la porte s’ouvre.', win: (w) => w.latched('bolt'),
       demo: D().down(600, 300).wait(3).end() },
     { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 }, solids: room().concat([door(640)]),
       bodies: [{ id: 'bA', kind: 'bolt', x: 630, y: 420, rail: { axis: 'y', min: 290, max: 420 } }, { id: 'bB', kind: 'bolt', x: 630, y: 520, rail: { axis: 'y', min: 520, max: 650 } }],
       sensors: [latchAt('lA', 'bA', 620, 282, 110, 290), latchAt('lB', 'bB', 620, 642, 110, 650)],
-      cage: { x: 1000, y: 540 }, witch: { x: 860, y: 560 }, hint: 'Deux verrous : un vers le haut, un vers le bas.', win: (w) => w.latched('bA') && w.latched('bB'),
+      cage: { x: 1000, y: 540 }, witch: { x: 860, y: 560 }, hint: 'Deux verrous tiennent la porte. Suis les flèches : un vers le haut, un vers le bas.', win: (w) => w.latched('bA') && w.latched('bB'),
       demo: D().down(600, 300).wait(2.5).move(600, 680, 1.5).wait(2.5).end() },
     fin({ kind: 'salle', tools: bar, solids: room([[250, 380]]).concat([door(640)]),
       bodies: [{ id: 'bolt', kind: 'bolt', x: 630, y: 420, rail: { axis: 'y', min: 290, max: 420 } }, { id: 'k', kind: 'knight', x: 900, y: KY }],
       sensors: [trap('t', 250, 380), Object.assign(latchAt('l', 'bolt', 620, 282, 110, 290), { removes: 'door' })],
-      hint: 'Ouvre le verrou : la porte s’ouvre. Puis amène le chevalier dans le trou.', win: (w) => w.captured('k'),
+      hint: 'Sors le verrou de ses crochets : la porte s’ouvre. Puis amène le chevalier dans le trou.', win: (w) => w.captured('k'),
       demo: carry(D().down(600, 300).wait(1.8).move(860, 650, 1.2).wait(0.6).move(315, 650, 3.2).wait(1.5), 500, 690, 1060).end() }, { keyX: 500 }),
   ] });
 
@@ -1074,11 +1097,12 @@
   ] });
 
   // 9 ------------------------------------------------------------ Le bouclier
+  const boltDoor = (x) => ({ id: 'door', x, y: 110, w: 40, h: 610, mat: 'wood' });
   const plates = (slitY, slitH) => [{ id: 'plateTop', x: 640, y: 110, w: 22, h: slitY - 110, mat: 'iron' }, { id: 'plateBot', x: 640, y: slitY + slitH, w: 22, h: 720 - slitY - slitH, mat: 'iron' }];
-  const shieldRoom = (slitY, slitH, boltY) => ({ tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 }, solids: room().concat(plates(slitY, slitH)),
+  const shieldRoom = (slitY, slitH, boltY) => ({ tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 }, solids: room().concat(plates(slitY, slitH), [boltDoor(855)]),
     bodies: [{ id: 'bolt', kind: 'bolt', x: 780, y: boltY, rail: { axis: 'x', min: 680, max: 780 } }], sensors: [latchAt('l', 'bolt', 660, boltY - 8, 90, undefined)], win: (w) => w.latched('bolt') });
   F.push({ n: 9, title: 'Le bouclier', taunt: 'Une plaque de fer, et ton aimant ne passe plus !', rooms: [
-    Object.assign(shieldRoom(380, 60, 400), { kind: 'atelier', hint: 'Le fer bloque l’aimant. Mets ta main en face de la fente.', demo: D().down(610, 250).wait(1.5).move(610, 410, 1).wait(3).end() }),
+    Object.assign(shieldRoom(380, 60, 400), { kind: 'atelier', hint: 'Le verrou tient la porte. Le fer bloque l’aimant : mets ta main en face de la fente et tire le verrou.', demo: D().down(610, 250).wait(1.5).move(610, 410, 1).wait(3).end() }),
     Object.assign(shieldRoom(480, 80, 400), { kind: 'salle', cage: { x: 1040, y: 540 }, witch: { x: 1120, y: 380 }, hint: 'La fente n’est pas en face du verrou. Colle ta main à la plaque, au niveau de la fente.', demo: D().down(632, 545).wait(3).end() }),
     fin({ kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 }, solids: room().concat(plates(480, 80), [{ id: 'shelf', x: 662, y: 560, w: 220, h: 20, mat: 'stone' }]),
       bodies: [{ id: 'key', kind: 'key', x: 720, y: 530, respawn: true }], sensors: [],
@@ -1167,7 +1191,7 @@
       cage: { x: 1090, y: 250 }, witch: { x: 760, y: 270 }, well: { x: 600, y: 420, w: 120, h: 320 },
       hint: 'Le chevalier sur le bouton ouvre la trappe. Puis la chaîne va chercher la clé.', win: (w) => w.pressed('keyhole'),
       demo: fish(D().down(300, 360).move(560, 360, 3).wait(2).up(), 822, 1090, 660, 1085).end() },
-    { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 720, h: 610 }, solids: room().concat(niche(400), [{ id: 'plateTop', x: 760, y: 110, w: 22, h: 270, mat: 'iron' }, { id: 'plateBot', x: 760, y: 440, w: 22, h: 280, mat: 'iron' }]),
+    { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 720, h: 610 }, solids: room().concat(niche(400), [{ id: 'plateTop', x: 760, y: 110, w: 22, h: 270, mat: 'iron' }, { id: 'plateBot', x: 760, y: 440, w: 22, h: 280, mat: 'iron' }, { id: 'door', x: 975, y: 110, w: 40, h: 610, mat: 'wood' }]),
       bodies: [{ id: 'k', kind: 'knight', x: 400, y: KY }, { id: 'sword', kind: 'sword', x: 150, y: 250 }, { id: 'bolt', kind: 'bolt', x: 900, y: 400, rail: { axis: 'x', min: 800, max: 900 } }],
       sensors: [latchAt('l', 'bolt', 780, 392, 110, undefined)], cage: { x: 1060, y: 540 }, witch: { x: 1130, y: 380 },
       hint: 'L’épée sur le chevalier, puis le verrou derrière la plaque de fer.', win: (w) => w.ko('k') && w.latched('bolt'),
@@ -1265,7 +1289,7 @@
     { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 }, solids: room().concat([door(640)]),
       bodies: [{ id: 'bA', kind: 'bolt', x: 630, y: 300, rail: { axis: 'y', min: 180, max: 300 } }, { id: 'bB', kind: 'bolt', x: 630, y: 420, rail: { axis: 'y', min: 420, max: 520 } }, { id: 'bC', kind: 'bolt', x: 630, y: 600, rail: { axis: 'y', min: 600, max: 680 } }],
       sensors: [latchAt('lA', 'bA', 620, 172, 110, 180), latchAt('lB', 'bB', 620, 512, 110, 520), latchAt('lC', 'bC', 620, 672, 110, 680)],
-      hint: 'Trois verrous : un vers le haut, deux vers le bas.', win: all(['bA', 'bB', 'bC'], (w, id) => w.latched(id)),
+      hint: 'Trois verrous tiennent la porte. Il faut les trois cadenas verts pour qu’elle s’ouvre.', win: all(['bA', 'bB', 'bC'], (w, id) => w.latched(id)),
       demo: D().down(600, 170).wait(2).move(600, 540, 1).wait(2).move(600, 700, 1).wait(2).end() },
   ];
   // 4 · L'épée
@@ -1330,9 +1354,9 @@
   // 9 · Le bouclier
   EXTRA[9] = [
     { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 },
-      solids: room().concat([{ id: 'p1', x: 640, y: 110, w: 22, h: 190, mat: 'iron' }, { id: 'p2', x: 640, y: 360, w: 22, h: 140, mat: 'iron' }, { id: 'p3', x: 640, y: 560, w: 22, h: 160, mat: 'iron' }]),
+      solids: room().concat([{ id: 'p1', x: 640, y: 110, w: 22, h: 190, mat: 'iron' }, { id: 'p2', x: 640, y: 360, w: 22, h: 140, mat: 'iron' }, { id: 'p3', x: 640, y: 560, w: 22, h: 160, mat: 'iron' }, boltDoor(855)]),
       bodies: [{ id: 'bA', kind: 'bolt', x: 780, y: 320, rail: { axis: 'x', min: 680, max: 780 } }, { id: 'bB', kind: 'bolt', x: 780, y: 520, rail: { axis: 'x', min: 680, max: 780 } }],
-      sensors: [latchAt('lA', 'bA', 660, 312, 90), latchAt('lB', 'bB', 660, 512, 90)], hint: 'Deux verrous, deux fentes.', win: (w) => w.latched('bA') && w.latched('bB'),
+      sensors: [latchAt('lA', 'bA', 660, 312, 90), latchAt('lB', 'bB', 660, 512, 90)], hint: 'Deux verrous tiennent la porte, et il y a deux fentes.', win: (w) => w.latched('bA') && w.latched('bB'),
       demo: D().down(632, 330).wait(2.5).move(632, 530, 1).wait(2.5).end() },
     { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 }, solids: room([[665, 790]]).concat([{ id: 'p1', x: 640, y: 110, w: 22, h: 450, mat: 'iron' }]),
       bodies: [K('k', 795)], sensors: [trap('t', 665, 790)], hint: 'Le chevalier est derrière la plaque. La fente est tout en bas.', win: (w) => w.captured('k'),
@@ -1606,6 +1630,7 @@
     captured: () => { tone(600, 0.45, 'sawtooth', 0.06, -480); noise(0.3, 0.05, 400, 0.3); },
     ko: () => { tone(140, 0.25, 'square', 0.09, -80); noise(0.25, 0.08, 300); },
     button: () => { tone(520, 0.1, 'square', 0.06); tone(780, 0.12, 'square', 0.05, 0, 0.09); },
+    door: () => { noise(0.9, 0.06, 180, 0.4); tone(160, 0.7, 'sawtooth', 0.04, 140); tone(523, 0.12, 'triangle', 0.07, 0, 0.5); tone(784, 0.2, 'triangle', 0.07, 0, 0.62); },
     latch: () => { tone(300, 0.06, 'square', 0.08); tone(220, 0.1, 'square', 0.07, 0, 0.06); },
     land: () => noise(0.12, 0.05, 250),
     secret: () => { tone(300, 0.3, 'sawtooth', 0.06, 200); noise(0.5, 0.06, 200); },
@@ -2008,7 +2033,8 @@
       case 'reveal': SFX.reveal(); if (b) { spawnBurst(c.x, c.y, 18, '#ffe066', 260); if (b.kind === 'key' && !demo) banner('La clé de Mei Mei !', 'Apporte-la jusqu’à sa cage.', 2.4); } break;
       case 'objective': if (room.openOnObjective) spawnBurst(W / 2, 400, 20, '#bfe8ff', 300); break;
       case 'respawn': if (b) { spawnSmoke(c.x, c.y, 10, 0.8); spawnRing(c.x, c.y, '#ffe066', 40); } break;
-      case 'latched': SFX.latch(); if (b) spawnBurst(c.x, b.y, 12, '#cfd3d9', 200); break;
+      case 'latched': SFX.latch(); if (b) { spawnBurst(c.x, b.y, 12, '#9fd6a8', 200); flashes.push({ x: c.x, y: b.y - 20, t: 0.7, text: 'Clic !' }); } break;
+      case 'door': SFX.door(); shake = Math.max(shake, 0.2); spawnSmoke(ev.x, 140, 16, 1); flashes.push({ x: ev.x, y: 300, t: 1.4, text: 'La porte s’ouvre !' }); break;
       case 'secret': SFX.secret(); shake = Math.max(shake, 0.2); break;
       case 'unhook': tone(1200, 0.05, 'square', 0.04); break;
       case 'win': if (!demo) { SFX.win(); buzz([30, 40, 60]); witchReact(room.final ? 'Nooon !' : 'Grrr !'); } break;
@@ -2124,6 +2150,7 @@
     if (lv.well) { ctx.fillStyle = C.pit; ctx.fillRect(lv.well.x, lv.well.y, lv.well.w, lv.well.h); }
     for (const s of lv.sensors || []) if (s.type === 'trap') { ctx.fillStyle = C.pit; ctx.fillRect(s.x, s.y - 2, s.w, 100); }
     for (const s of w.solids) drawSolid(s);
+    drawOpeningDoors(w);
     drawSensors();
     if (lv.lodestone) drawImageFit(IMG.magnetite, lv.lodestone);
     if (lv.kind === 'atelier') drawSign();
@@ -2133,6 +2160,7 @@
     slideTick += dt;
     if (slideTick > 0.07) { slideTick = 0; for (const b of w.bodies) if (b.grounded && Math.abs(b.vx) > 90 && !b.hidden && !b.captured) spawnSmoke(b.x + b.w / 2 - Math.sign(b.vx) * b.w / 2, b.y + b.h, 1, 0.5); }
     for (const b of w.bodies) drawBody(b, time);
+    drawKeepers(w);
     if (w.filings) drawFilings();
     drawPulls(time);
     drawMagnet(time);
@@ -2221,6 +2249,7 @@
         if (!s.pressed) { ctx.strokeStyle = C.zoneLine; ctx.setLineDash([8, 8]); ctx.lineWidth = 2; ctx.strokeRect(s.x, s.y, s.w, s.h); ctx.setLineDash([]); }
       } else if (s.type === 'latch') {
         const b = world.body(s.body);
+        if (b && b.kind === 'bolt' && b.lockStart) withLift(b.rail.axis === 'y' ? doorLift(world, s.door) : null, () => drawBoltTrack(b, s));
         if (b && b.kind === 'herse') { ctx.fillStyle = '#2c3036'; ctx.fillRect(s.x - 12, s.y - 60, 12, 30); ctx.fillRect(s.x + s.w, s.y - 60, 12, 30); }
       } else if (s.type === 'secret' && s.done) {
         ctx.fillStyle = C.pit; ctx.fillRect(s.x, s.y, s.w, s.h);
@@ -2301,7 +2330,7 @@
         break;
       case 'straw': drawImageFit(IMG.epouvantail, { x: b.x - 10, y: b.y, w: b.w + 20, h: b.h }); break;
       case 'sword': drawImageFit(IMG.epee, { x: b.x - 10, y: b.y, w: b.w + 20, h: b.h }); break;
-      case 'bolt': drawBolt(b); break;
+      case 'bolt': { const sn = boltSensor(world, b); withLift(sn && b.rail.axis === 'y' ? doorLift(world, sn.door) : null, () => drawBolt(b)); break; }
       case 'ring':
         ctx.strokeStyle = '#8e959e'; ctx.lineWidth = 9; ctx.beginPath(); ctx.arc(b.x + b.w / 2, b.y + b.h / 2, b.w / 2 - 5, 0, 7); ctx.stroke();
         ctx.strokeStyle = '#c9ced4'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(b.x + b.w / 2, b.y + b.h / 2, b.w / 2 - 7, Math.PI * 1.1, Math.PI * 1.6); ctx.stroke();
@@ -2326,11 +2355,98 @@
     ctx.fillStyle = C.gold; ctx.font = 'bold 26px Fredoka, sans-serif'; ctx.textAlign = 'center';
     for (let i = 0; i < 4; i++) { const a = time * 4 + i * Math.PI / 2; ctx.fillText('★', x + Math.cos(a) * 46, y + Math.sin(a) * 12); }
   }
+  // Verrou : il glisse dans sa rainure ; au départ il est coincé dans ses crochets (la gâche) et tient la porte.
+  function boltTarget(b, s) {
+    const r = b.rail, ax = r.axis === 'x';
+    const c = ax ? s.x + s.w / 2 - b.w / 2 : (s.snapY ?? s.y + s.h / 2 - b.h / 2);
+    const end = Math.abs(c - r.min) < Math.abs(c - r.max) ? r.min : r.max;
+    return ax ? { x: end, y: b.lockStart.y } : { x: b.lockStart.x, y: end };
+  }
+  function drawBoltTrack(b, s) {
+    const t = boltTarget(b, s), a = b.lockStart;
+    const x0 = Math.min(a.x, t.x) - 5, y0 = Math.min(a.y, t.y) - 5, x1 = Math.max(a.x, t.x) + b.w + 5, y1 = Math.max(a.y, t.y) + b.h + 5;
+    ctx.fillStyle = 'rgba(18,10,28,0.55)'; rr(x0, y0, x1 - x0, y1 - y0, 10); ctx.fill();
+    if (b.latched) return;
+    // chevrons qui montrent dans quel sens tirer
+    const ax = b.rail.axis === 'x', dir = Math.sign(ax ? t.x - a.x : t.y - a.y) || -1, now = performance.now() / 1000;
+    ctx.strokeStyle = 'rgba(140,240,160,0.85)'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+    for (let i = 0; i < 3; i++) {
+      const k = ((i / 3 + now * 0.6) % 1);
+      const px = ax ? a.x + b.w / 2 + (t.x - a.x) * k : a.x + b.w / 2, py = ax ? a.y + b.h / 2 : a.y + b.h / 2 + (t.y - a.y) * k;
+      ctx.globalAlpha = Math.sin(k * Math.PI);
+      ctx.beginPath();
+      if (ax) { ctx.moveTo(px - dir * 8, py - 9); ctx.lineTo(px + dir * 4, py); ctx.lineTo(px - dir * 8, py + 9); }
+      else { ctx.moveTo(px - 10, py - dir * 8); ctx.lineTo(px, py + dir * 4); ctx.lineTo(px + 10, py - dir * 8); }
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    // la place libre, au bout de la rainure
+    ctx.strokeStyle = 'rgba(140,240,160,0.9)'; ctx.setLineDash([8, 6]); ctx.lineWidth = 3; rr(t.x, t.y, b.w, b.h, 8); ctx.stroke(); ctx.setLineDash([]);
+  }
+  // les crochets (gâche) devant le verrou : tant qu'il est dedans, la porte reste fermée
+  function drawKeepers(w) {
+    for (const s of w.sensors) {
+      if (s.type !== 'latch') continue;
+      const b = w.body(s.body); if (!b || b.kind !== 'bolt' || !b.lockStart) continue;
+      withLift(doorLift(w, s.door), () => drawKeeper(b, s));
+    }
+  }
+  function drawKeeper(b, s) {
+    {
+      const a = b.lockStart, t = boltTarget(b, s);
+      ctx.strokeStyle = '#1f2328'; ctx.lineWidth = 7; ctx.lineJoin = 'round';
+      if (b.rail.axis === 'x') {
+        // un anneau sur la porte : le verrou glisse dedans
+        const lx = a.x + b.w - (t.x < a.x ? 26 : 74);
+        ctx.strokeRect(lx, a.y - 8, 18, b.h + 16);
+      } else {
+        const up = t.y < a.y;
+        for (const ex of [a.x - 4, a.x + b.w - 14]) {
+          ctx.beginPath();
+          if (up) { ctx.moveTo(ex, a.y - 4); ctx.lineTo(ex, a.y + b.h + 7); ctx.lineTo(ex + 18, a.y + b.h + 7); ctx.lineTo(ex + 18, a.y - 4); }
+          else { ctx.moveTo(ex, a.y + b.h + 4); ctx.lineTo(ex, a.y - 7); ctx.lineTo(ex + 18, a.y - 7); ctx.lineTo(ex + 18, a.y + b.h + 4); }
+          ctx.stroke();
+        }
+      }
+    }
+  }
+  // la porte qui se lève dans le plafond
+  // une porte qui se lève emporte ses verrous et ses crochets
+  function doorLift(w, id) {
+    const d = id && w.openingDoors.find((x) => x.id === id); if (!d) return null;
+    const k = Math.min(1, (w.time - d.t0) / 0.9);
+    return { d, done: k >= 1, dy: -(k * k * (3 - 2 * k)) * d.h };
+  }
+  function withLift(lift, fn) {
+    if (!lift) { fn(); return; }
+    if (lift.done) return;
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 110, W, 610); ctx.clip(); ctx.translate(0, lift.dy); fn(); ctx.restore();
+  }
+  function boltSensor(w, b) { return w.sensors.find((x) => x.type === 'latch' && x.body === b.id); }
+  function drawOpeningDoors(w) {
+    for (const d of w.openingDoors) {
+      const k = Math.min(1, (w.time - d.t0) / 0.9); if (k >= 1) continue;
+      const e = k * k * (3 - 2 * k);
+      ctx.save(); ctx.beginPath(); ctx.rect(d.x - 10, 110, d.w + 20, 610); ctx.clip();
+      drawSolid(Object.assign({}, d, { y: d.y - e * d.h }));
+      ctx.restore();
+    }
+  }
+  function drawPadlock(x, y, open) {
+    ctx.save(); ctx.translate(x, y);
+    ctx.strokeStyle = open ? '#2e8b45' : '#8a6508'; ctx.lineWidth = 3.5;
+    ctx.beginPath(); if (open) ctx.arc(5, -9, 6, Math.PI, 0); else ctx.arc(0, -5, 6, Math.PI, 0); ctx.stroke();
+    if (!open) { ctx.beginPath(); ctx.moveTo(-6, -5); ctx.lineTo(-6, 0); ctx.moveTo(6, -5); ctx.lineTo(6, 0); ctx.stroke(); }
+    ctx.fillStyle = open ? '#5fd17a' : C.gold; rr(-9, -3, 18, 14, 3); ctx.fill();
+    ctx.fillStyle = '#2b2b2b'; ctx.fillRect(-1.5, 1, 3, 6);
+    ctx.restore();
+  }
   function drawBolt(b) {
     ctx.fillStyle = '#2c3036'; rr(b.x - 8, b.y - 6, b.w + 16, b.h + 12, 6); ctx.fill();
     ctx.fillStyle = b.latched ? '#9fd6a8' : '#9aa1aa'; rr(b.x, b.y, b.w, b.h, 8); ctx.fill();
     ctx.fillStyle = '#d7dce2'; rr(b.x + 6, b.y + 4, b.w - 12, 5, 3); ctx.fill();
-    ctx.fillStyle = '#5a6068'; ctx.beginPath(); ctx.arc(b.x + b.w / 2, b.y + b.h / 2, 5, 0, 7); ctx.fill();
+    if (b.lockStart) drawPadlock(b.x + b.w / 2, b.y + b.h / 2 - 2, b.latched);
+    else { ctx.fillStyle = '#5a6068'; ctx.beginPath(); ctx.arc(b.x + b.w / 2, b.y + b.h / 2, 5, 0, 7); ctx.fill(); }
   }
   function drawGate(b) {
     ctx.fillStyle = '#7a4a1e'; ctx.fillRect(b.x, b.y, b.w, b.h);

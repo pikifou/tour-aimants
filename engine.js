@@ -82,6 +82,16 @@
         return body;
       });
       this.sensors = (level.sensors || []).map((s) => Object.assign({ pressed: false, done: false }, s));
+      // Verrous de porte : chaque verrou est engagé dans la gâche d'une porte en bois. Quand tous les verrous
+      // d'une porte sont tirés hors de leur gâche, la porte se lève.
+      this.openingDoors = [];
+      for (const sn of this.sensors) {
+        if (sn.type !== 'latch') continue;
+        const b = this.body(sn.body); if (!b || b.kind !== 'bolt') continue;
+        if (sn.removes) { sn.door = sn.removes; sn.removes = null; }
+        if (!sn.door) { const d = this.solids.find((x) => x.mat === 'wood' && /^door/.test(x.id) && b.x < x.x + x.w && b.x + b.w > x.x); if (d) sn.door = d.id; }
+        b.lockStart = { x: b.x, y: b.y };
+      }
       this.tools = (level.tools || []).map((t) => Object.assign({}, TOOLS[t.type], t));
       this.toolIndex = 0;
       this.flipped = false;
@@ -419,6 +429,7 @@
             if (sn.snapY !== undefined) b.y = sn.snapY;
             this.events.push({ type: 'latched', id: b.id });
             if (sn.removes) { this.openSolids(sn.removes); this.events.push({ type: 'open', id: sn.id }); }
+            if (sn.door) this.openDoorIfFree(sn.door);
           }
         } else if (sn.type === 'alarm') {
           if (this.won) continue;            // salle déjà gagnée : la cloche ne compte plus
@@ -461,6 +472,18 @@
       }
       return true;
     }
+
+    // la porte se lève quand plus aucun verrou ne la tient
+    openDoorIfFree(id) {
+      const locks = this.sensors.filter((x) => x.type === 'latch' && x.door === id);
+      if (!locks.every((x) => this.body(x.body).latched)) return;
+      const d = this.solids.find((x) => x.id === id); if (!d) return;
+      this.openingDoors.push(Object.assign({}, d, { t0: this.time }));
+      this.openSolids(id);
+      this.events.push({ type: 'door', id, x: d.x + d.w / 2 });
+    }
+    // verrous d'une porte encore fermés (pour les cadenas dessinés sur la porte)
+    doorLocks(id) { return this.sensors.filter((x) => x.type === 'latch' && x.door === id).map((x) => this.body(x.body)); }
 
     openSolids(ids) {
       const list = Array.isArray(ids) ? ids : [ids];

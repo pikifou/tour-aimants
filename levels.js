@@ -114,21 +114,21 @@
   F.push({ n: 3, title: 'La serrure', taunt: 'Ma porte est fermée à clé !', rooms: [
     { kind: 'atelier', tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 }, solids: room().concat([door(640)]),
       bodies: [{ id: 'bolt', kind: 'bolt', x: 630, y: 420, rail: { axis: 'y', min: 290, max: 420 } }], sensors: [latchAt('l', 'bolt', 620, 282, 110, 290)],
-      hint: 'Reste à gauche de la porte. Tire le verrou vers le haut.', win: (w) => w.latched('bolt'),
+      hint: 'Le verrou est coincé dans ses crochets : la porte est fermée. Tire-le vers le haut pour le sortir des crochets.', win: (w) => w.latched('bolt'),
       demo: D().down(600, 430).move(600, 280, 1.5).wait(1.5).end() },
     { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 }, solids: room().concat([door(640)]),
       bodies: [{ id: 'bolt', kind: 'bolt', x: 630, y: 420, rail: { axis: 'y', min: 290, max: 420 } }], sensors: [latchAt('l', 'bolt', 620, 282, 110, 290)],
-      cage: { x: 1000, y: 540 }, witch: { x: 860, y: 560 }, hint: 'Le verrou est en fer, derrière la porte en bois. Fais-le glisser vers le haut.', win: (w) => w.latched('bolt'),
+      cage: { x: 1000, y: 540 }, witch: { x: 860, y: 560 }, hint: 'Sors le verrou de ses crochets, dans le sens des flèches. Quand le cadenas est vert, la porte s’ouvre.', win: (w) => w.latched('bolt'),
       demo: D().down(600, 300).wait(3).end() },
     { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 }, solids: room().concat([door(640)]),
       bodies: [{ id: 'bA', kind: 'bolt', x: 630, y: 420, rail: { axis: 'y', min: 290, max: 420 } }, { id: 'bB', kind: 'bolt', x: 630, y: 520, rail: { axis: 'y', min: 520, max: 650 } }],
       sensors: [latchAt('lA', 'bA', 620, 282, 110, 290), latchAt('lB', 'bB', 620, 642, 110, 650)],
-      cage: { x: 1000, y: 540 }, witch: { x: 860, y: 560 }, hint: 'Deux verrous : un vers le haut, un vers le bas.', win: (w) => w.latched('bA') && w.latched('bB'),
+      cage: { x: 1000, y: 540 }, witch: { x: 860, y: 560 }, hint: 'Deux verrous tiennent la porte. Suis les flèches : un vers le haut, un vers le bas.', win: (w) => w.latched('bA') && w.latched('bB'),
       demo: D().down(600, 300).wait(2.5).move(600, 680, 1.5).wait(2.5).end() },
     fin({ kind: 'salle', tools: bar, solids: room([[250, 380]]).concat([door(640)]),
       bodies: [{ id: 'bolt', kind: 'bolt', x: 630, y: 420, rail: { axis: 'y', min: 290, max: 420 } }, { id: 'k', kind: 'knight', x: 900, y: KY }],
       sensors: [trap('t', 250, 380), Object.assign(latchAt('l', 'bolt', 620, 282, 110, 290), { removes: 'door' })],
-      hint: 'Ouvre le verrou : la porte s’ouvre. Puis amène le chevalier dans le trou.', win: (w) => w.captured('k'),
+      hint: 'Sors le verrou de ses crochets : la porte s’ouvre. Puis amène le chevalier dans le trou.', win: (w) => w.captured('k'),
       demo: carry(D().down(600, 300).wait(1.8).move(860, 650, 1.2).wait(0.6).move(315, 650, 3.2).wait(1.5), 500, 690, 1060).end() }, { keyX: 500 }),
   ] });
 
@@ -237,11 +237,12 @@
   ] });
 
   // 9 ------------------------------------------------------------ Le bouclier
+  const boltDoor = (x) => ({ id: 'door', x, y: 110, w: 40, h: 610, mat: 'wood' });
   const plates = (slitY, slitH) => [{ id: 'plateTop', x: 640, y: 110, w: 22, h: slitY - 110, mat: 'iron' }, { id: 'plateBot', x: 640, y: slitY + slitH, w: 22, h: 720 - slitY - slitH, mat: 'iron' }];
-  const shieldRoom = (slitY, slitH, boltY) => ({ tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 }, solids: room().concat(plates(slitY, slitH)),
+  const shieldRoom = (slitY, slitH, boltY) => ({ tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 }, solids: room().concat(plates(slitY, slitH), [boltDoor(855)]),
     bodies: [{ id: 'bolt', kind: 'bolt', x: 780, y: boltY, rail: { axis: 'x', min: 680, max: 780 } }], sensors: [latchAt('l', 'bolt', 660, boltY - 8, 90, undefined)], win: (w) => w.latched('bolt') });
   F.push({ n: 9, title: 'Le bouclier', taunt: 'Une plaque de fer, et ton aimant ne passe plus !', rooms: [
-    Object.assign(shieldRoom(380, 60, 400), { kind: 'atelier', hint: 'Le fer bloque l’aimant. Mets ta main en face de la fente.', demo: D().down(610, 250).wait(1.5).move(610, 410, 1).wait(3).end() }),
+    Object.assign(shieldRoom(380, 60, 400), { kind: 'atelier', hint: 'Le verrou tient la porte. Le fer bloque l’aimant : mets ta main en face de la fente et tire le verrou.', demo: D().down(610, 250).wait(1.5).move(610, 410, 1).wait(3).end() }),
     Object.assign(shieldRoom(480, 80, 400), { kind: 'salle', cage: { x: 1040, y: 540 }, witch: { x: 1120, y: 380 }, hint: 'La fente n’est pas en face du verrou. Colle ta main à la plaque, au niveau de la fente.', demo: D().down(632, 545).wait(3).end() }),
     fin({ kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 }, solids: room().concat(plates(480, 80), [{ id: 'shelf', x: 662, y: 560, w: 220, h: 20, mat: 'stone' }]),
       bodies: [{ id: 'key', kind: 'key', x: 720, y: 530, respawn: true }], sensors: [],
@@ -330,7 +331,7 @@
       cage: { x: 1090, y: 250 }, witch: { x: 760, y: 270 }, well: { x: 600, y: 420, w: 120, h: 320 },
       hint: 'Le chevalier sur le bouton ouvre la trappe. Puis la chaîne va chercher la clé.', win: (w) => w.pressed('keyhole'),
       demo: fish(D().down(300, 360).move(560, 360, 3).wait(2).up(), 822, 1090, 660, 1085).end() },
-    { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 720, h: 610 }, solids: room().concat(niche(400), [{ id: 'plateTop', x: 760, y: 110, w: 22, h: 270, mat: 'iron' }, { id: 'plateBot', x: 760, y: 440, w: 22, h: 280, mat: 'iron' }]),
+    { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 720, h: 610 }, solids: room().concat(niche(400), [{ id: 'plateTop', x: 760, y: 110, w: 22, h: 270, mat: 'iron' }, { id: 'plateBot', x: 760, y: 440, w: 22, h: 280, mat: 'iron' }, { id: 'door', x: 975, y: 110, w: 40, h: 610, mat: 'wood' }]),
       bodies: [{ id: 'k', kind: 'knight', x: 400, y: KY }, { id: 'sword', kind: 'sword', x: 150, y: 250 }, { id: 'bolt', kind: 'bolt', x: 900, y: 400, rail: { axis: 'x', min: 800, max: 900 } }],
       sensors: [latchAt('l', 'bolt', 780, 392, 110, undefined)], cage: { x: 1060, y: 540 }, witch: { x: 1130, y: 380 },
       hint: 'L’épée sur le chevalier, puis le verrou derrière la plaque de fer.', win: (w) => w.ko('k') && w.latched('bolt'),
@@ -428,7 +429,7 @@
     { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 }, solids: room().concat([door(640)]),
       bodies: [{ id: 'bA', kind: 'bolt', x: 630, y: 300, rail: { axis: 'y', min: 180, max: 300 } }, { id: 'bB', kind: 'bolt', x: 630, y: 420, rail: { axis: 'y', min: 420, max: 520 } }, { id: 'bC', kind: 'bolt', x: 630, y: 600, rail: { axis: 'y', min: 600, max: 680 } }],
       sensors: [latchAt('lA', 'bA', 620, 172, 110, 180), latchAt('lB', 'bB', 620, 512, 110, 520), latchAt('lC', 'bC', 620, 672, 110, 680)],
-      hint: 'Trois verrous : un vers le haut, deux vers le bas.', win: all(['bA', 'bB', 'bC'], (w, id) => w.latched(id)),
+      hint: 'Trois verrous tiennent la porte. Il faut les trois cadenas verts pour qu’elle s’ouvre.', win: all(['bA', 'bB', 'bC'], (w, id) => w.latched(id)),
       demo: D().down(600, 170).wait(2).move(600, 540, 1).wait(2).move(600, 700, 1).wait(2).end() },
   ];
   // 4 · L'épée
@@ -493,9 +494,9 @@
   // 9 · Le bouclier
   EXTRA[9] = [
     { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 },
-      solids: room().concat([{ id: 'p1', x: 640, y: 110, w: 22, h: 190, mat: 'iron' }, { id: 'p2', x: 640, y: 360, w: 22, h: 140, mat: 'iron' }, { id: 'p3', x: 640, y: 560, w: 22, h: 160, mat: 'iron' }]),
+      solids: room().concat([{ id: 'p1', x: 640, y: 110, w: 22, h: 190, mat: 'iron' }, { id: 'p2', x: 640, y: 360, w: 22, h: 140, mat: 'iron' }, { id: 'p3', x: 640, y: 560, w: 22, h: 160, mat: 'iron' }, boltDoor(855)]),
       bodies: [{ id: 'bA', kind: 'bolt', x: 780, y: 320, rail: { axis: 'x', min: 680, max: 780 } }, { id: 'bB', kind: 'bolt', x: 780, y: 520, rail: { axis: 'x', min: 680, max: 780 } }],
-      sensors: [latchAt('lA', 'bA', 660, 312, 90), latchAt('lB', 'bB', 660, 512, 90)], hint: 'Deux verrous, deux fentes.', win: (w) => w.latched('bA') && w.latched('bB'),
+      sensors: [latchAt('lA', 'bA', 660, 312, 90), latchAt('lB', 'bB', 660, 512, 90)], hint: 'Deux verrous tiennent la porte, et il y a deux fentes.', win: (w) => w.latched('bA') && w.latched('bB'),
       demo: D().down(632, 330).wait(2.5).move(632, 530, 1).wait(2.5).end() },
     { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 }, solids: room([[665, 790]]).concat([{ id: 'p1', x: 640, y: 110, w: 22, h: 450, mat: 'iron' }]),
       bodies: [K('k', 795)], sensors: [trap('t', 665, 790)], hint: 'Le chevalier est derrière la plaque. La fente est tout en bas.', win: (w) => w.captured('k'),
