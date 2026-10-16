@@ -136,7 +136,7 @@
   function initTitle() {
     $('#intro').innerHTML = INTRO.lines.map((l, i) => `<p style="animation-delay:${0.2 + i * 0.35}s">${fr(l)}</p>`).join('');
     $('#btnFull').onclick = toggleFullscreen;
-    $('#btnFullHud').onclick = toggleFullscreen;
+    tap($('#btnFullHud'), toggleFullscreen);
     $('#btnInstall').onclick = install;
     $('#iosHint').hidden = !(IOS && !STANDALONE && location.protocol === 'https:' && !/claude/.test(location.hostname));
     updateFullscreenButtons();
@@ -275,7 +275,7 @@
       world.tools.forEach((t, i) => {
         const b = document.createElement('button'); b.type = 'button'; b.className = 'tool' + (i === world.toolIndex ? ' on' : '');
         b.innerHTML = toolIcon(t.type) + `<span>${t.label}</span>`;
-        b.onclick = () => { takeControl(); world.selectTool(i); buildHud(); SFX.flip(); };
+        tap(b, () => { takeControl(); world.selectTool(i); buildHud(); SFX.flip(); });
         tools.appendChild(b);
       });
     }
@@ -291,20 +291,26 @@
     $('#gauge').hidden = !(t && (t.type === 'nail' || room.turnsNeeded));
     $('#btnShow').hidden = !(room.kind !== 'atelier' && hintCount >= 1);
   }
+  // Boutons du jeu : réagissent dès que le doigt se pose (pointerdown), même si un autre doigt tient déjà le bonhomme.
+  // Un tap tactile à deux doigts ne génère souvent pas de « click » : on ne s'appuie donc pas dessus.
+  function tap(el, fn) {
+    el.onpointerdown = (e) => { e.preventDefault(); e.stopPropagation(); unlockAudio(); fn(); };
+    el.onclick = (e) => { if (e.detail === 0) fn(); };   // clavier (Entrée / Espace) seulement
+  }
   function toolIcon(type) {
     if (type === 'bar') return '<i class="ico bar"></i>';
     if (type === 'double') return '<i class="ico bar"></i><i class="ico bar"></i>';
     if (type === 'horseshoe') return '<i class="ico hs"></i>';
     return '';
   }
-  $('#btnFlip').onclick = () => { takeControl(); world.flip(); buildHud(); SFX.flip(); pulseButton('#btnFlip'); };
-  $('#btnOn').onclick = () => { takeControl(); world.toggleElectro(); buildHud(); SFX.on(world.electroOn); pulseButton('#btnOn'); };
-  $('#btnTurn').onclick = () => { takeControl(); world.addTurn(); buildHud(); SFX.turn(world.turns); pulseButton('#btnTurn'); };
-  $('#btnFilings').onclick = () => { takeControl(); world.toggleFilings(); buildHud(); };
-  $('#btnRestart').onclick = () => { resetWorld(); buildHud(); if (room.kind === 'atelier') startDemo('loop'); };
-  $('#btnHint').onclick = () => { showHint(); hintCount++; buildHud(); };
-  $('#btnShow').onclick = () => { resetWorld(); buildHud(); startDemo('once'); };
-  $('#btnTower').onclick = () => { show('tower'); renderTower(); };
+  tap($('#btnFlip'), () => { takeControl(); world.flip(); buildHud(); SFX.flip(); pulseButton('#btnFlip'); });
+  tap($('#btnOn'), () => { takeControl(); world.toggleElectro(); buildHud(); SFX.on(world.electroOn); pulseButton('#btnOn'); });
+  tap($('#btnTurn'), () => { takeControl(); world.addTurn(); buildHud(); SFX.turn(world.turns); pulseButton('#btnTurn'); });
+  tap($('#btnFilings'), () => { takeControl(); world.toggleFilings(); buildHud(); });
+  tap($('#btnRestart'), () => { resetWorld(); buildHud(); if (room.kind === 'atelier') startDemo('loop'); });
+  tap($('#btnHint'), () => { showHint(); hintCount++; buildHud(); });
+  tap($('#btnShow'), () => { resetWorld(); buildHud(); startDemo('once'); });
+  tap($('#btnTower'), () => { show('tower'); renderTower(); });
   function showHint() { $('#hintText').textContent = fr(room.hint); $('#hint').hidden = false; hintUntil = performance.now() + 7000; }
   $('#hint').onclick = () => { $('#hint').hidden = true; };
   function pulseButton(sel) { const b = $(sel); b.classList.remove('pulse'); void b.offsetWidth; b.classList.add('pulse'); }
@@ -334,7 +340,14 @@
     if (!world) return;
     unlockAudio();
     if (demo) { takeControl(); }
-    if (world.won || activePointer !== null) return;
+    if (world.won) return;
+    if (activePointer !== null) {
+      // deuxième doigt pendant que le premier tient le bonhomme : il change l'état de l'aimant
+      const t = world.tool;
+      if (room.canFlip && t && t.poles) { world.flip(); buildHud(); SFX.flip(); pulseButton('#btnFlip'); }
+      else if (t && t.type === 'electro') { world.toggleElectro(); buildHud(); SFX.on(world.electroOn); pulseButton('#btnOn'); }
+      return;
+    }
     activePointer = e.pointerId; try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
     const raw = toLogical(e);
     // Le doigt se pose sur le bonhomme ; l'aimant est dans sa main, plus haut, bien visible.
@@ -669,11 +682,12 @@
     let sx = 1, sy = 1, rot = 0;
     if (f) { sx += f.sq * 0.3 + f.pop; sy -= f.sq * 0.3 - f.pop; }
     if (b.grounded && Math.abs(b.vx) > 60 && !b.rail) rot = Math.sin(time * 22) * 0.06 * Math.min(1, Math.abs(b.vx) / 250);
-    if (b.captured) rot = (b.y - 700) / 300;
+    if (b.tilt) rot = b.tilt;
+    if (b.captured) rot = (b.tilt || 0.3) + (b.y - 700) / 250;
     ctx.translate(cx, by); ctx.rotate(rot); ctx.scale(sx, sy); ctx.translate(-cx, -by);
     switch (b.kind) {
       case 'knight':
-        if (b.ko) drawImageFit(IMG.armure_tas, b); else drawImageFit(IMG.armure, { x: b.x - 10, y: b.y, w: b.w + 20, h: b.h });
+        if (b.ko) drawImageFit(IMG.armure_tas, { x: b.x - 10, y: b.y - 40, w: b.w + 20, h: b.h + 40 }); else drawImageFit(IMG.armure, { x: b.x - 16, y: b.y - 14, w: b.w + 32, h: b.h + 14 });
         if (b.pole && (!b.hiddenPole || world.filings)) drawPoleLabel(b);
         else if (b.pole) drawHiddenPole(b);
         if (f && f.stars > 0) { drawStars(cx, b.y - 20, time); f.stars -= 1 / 60; }

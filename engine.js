@@ -319,7 +319,9 @@
         } else {
           b.vy += (G + ay) * dt;
           b.vx += ax * dt;
-          if (b.grounded) {
+          if (b.grounded && b.tip) {
+            b.vx += b.tip * 1400 * dt;                   // il bascule vers le vide
+          } else if (b.grounded) {
             const fr = Math.min(Math.abs(b.vx), 500 * dt);
             b.vx -= Math.sign(b.vx) * fr;
             if (Math.abs(ax) < 350 && Math.abs(b.vx) < 30) b.vx = 0;
@@ -481,6 +483,22 @@
         if (b.vy > 0) { b.y = s.y - b.h; b.grounded = true; if (!wasGrounded && vyBefore > 250) this.events.push({ type: 'land', id: b.id, v: vyBefore }); }
         else if (b.vy < 0) b.y = s.y + s.h;
         b.vy = 0;
+      }
+      // Bascule au bord d'un trou : si le centre n'est plus au-dessus d'un appui, le corps glisse et tombe
+      b.tip = 0; b.tilt = 0;
+      if (b.grounded) {
+        const bottom = b.y + b.h; let lo = Infinity, hi = -Infinity;
+        for (const s of this.solids) {
+          if (Math.abs(s.y - bottom) > 1.5) continue;
+          const a = Math.max(b.x, s.x), c = Math.min(b.x + b.w, s.x + s.w);
+          if (c > a) { lo = Math.min(lo, a); hi = Math.max(hi, c); }
+        }
+        const cx = b.x + b.w / 2, margin = b.w * 0.12;
+        if (lo < Infinity && (cx < lo + margin || cx > hi - margin)) {
+          b.tip = cx < lo + margin ? -1 : 1;
+          const over = b.tip > 0 ? cx - (hi - margin) : (lo + margin) - cx;
+          b.tilt = b.tip * Math.min(0.6, 0.15 + over / b.w);
+        }
       }
       // sol de secours
       if (b.y + b.h > H + 300) { b.hidden = true; }
