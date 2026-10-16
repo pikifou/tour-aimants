@@ -1,0 +1,1943 @@
+<title>La Tour aux Aimants</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@600;700;800&display=swap">
+<style>
+  /* Layout : tout le jeu vit dans une scène fixe de 1280×800 (#app), mise à l'échelle pour remplir l'écran en paysage,
+     et tournée de 90° si la tablette est tenue en portrait. Univers unique : nuit violette de la tour, lanternes dorées. */
+  :root {
+    --bg: #1b1430; --panel: #2a2145; --panel-2: #3a2f5c; --fg: #fff6e6; --muted: #c9bfdc;
+    --accent: #ffb020; --accent-ink: #2b1a00; --sky: #7ad3ff; --ok: #3fbf5a; --red: #e0453a; --blue: #2f6fd6;
+    --display: 'Fredoka', 'Trebuchet MS', 'Segoe UI', sans-serif; --body: 'Nunito', 'Segoe UI', Helvetica, Arial, sans-serif;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 18px;
+    padding-block: 0; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    box-sizing: border-box; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; }
+  #app { position: fixed; left: 0; top: 0; width: 1280px; height: 800px; transform-origin: 0 0; background: var(--bg); overflow: hidden; border-radius: 12px; }
+  .screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; box-sizing: border-box; }
+  .screen.in { animation: fadeIn .35s ease-out both; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
+  @keyframes lineIn { from { opacity: 0; transform: translateX(-12px) } to { opacity: 1; transform: none } }
+  @keyframes popIn { 0% { transform: scale(.9) } 60% { transform: scale(1.06) } 100% { transform: scale(1) } }
+  @keyframes pulse { 0% { transform: scale(1) } 40% { transform: scale(1.12) } 100% { transform: scale(1) } }
+  @keyframes wiggle { 0%, 100% { transform: rotate(0) } 25% { transform: rotate(-4deg) } 75% { transform: rotate(4deg) } }
+  @keyframes bob { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-10px) } }
+  @media (prefers-reduced-motion: reduce) { .screen.in, #intro p, #cardText p, .floor.current, button.pulse, .floor.current .mark img, #end img { animation: none !important; } }
+  h1, h2, h3 { font-family: var(--display); font-weight: 700; margin: 0; text-wrap: balance; }
+  button { font-family: var(--display); font-weight: 600; font-size: 26px; color: var(--accent-ink); background: var(--accent); border: 0; border-radius: 999px;
+    padding: 14px 30px; cursor: pointer; box-shadow: 0 4px 0 #b57700; touch-action: manipulation; transition: transform .08s ease-out, filter .15s; }
+  button:hover { filter: brightness(1.06); }
+  button:active { transform: translateY(3px) scale(.98); box-shadow: 0 1px 0 #b57700; }
+  button:focus-visible { outline: 3px solid var(--sky); outline-offset: 3px; }
+  button.ghost { background: var(--panel-2); color: var(--fg); box-shadow: 0 4px 0 #1a1230; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button.pulse { animation: pulse .35s ease-out; }
+  .row { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; align-items: center; }
+
+  /* titre */
+  #title .bgimg { position: absolute; inset: 0; background: url(assets/tour.jpg) center/cover no-repeat; opacity: 0.6; }
+  #title > * { position: relative; }
+  #title h1 { font-size: 84px; color: var(--accent); text-shadow: 0 5px 0 #5a3a00, 0 12px 36px rgba(0,0,0,0.6); }
+  #intro { background: rgba(27,20,48,0.85); border-radius: 24px; padding: 18px 30px; max-width: 700px; text-align: center; font-size: 30px; font-weight: 800; line-height: 1.4; }
+  #intro p { margin: 4px 0; animation: lineIn .5s ease-out both; }
+
+  /* tour */
+  #tower { flex-direction: row; gap: 50px; padding: 20px 40px; }
+  #floors { display: flex; flex-direction: column; gap: 4px; width: 620px; }
+  .floor { display: grid; grid-template-columns: 50px 1fr 60px; align-items: center; gap: 12px; text-align: left; border-radius: 12px; padding: 4px 16px;
+    background: var(--panel); color: var(--fg); box-shadow: inset 0 0 0 2px #4a3d6a; font-size: 21px; min-height: 40px; }
+  .floor .num { font-family: var(--display); font-size: 24px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .floor .name { font-family: var(--body); font-weight: 800; display: flex; align-items: center; gap: 14px; }
+  .floor .mark { font-size: 28px; color: var(--ok); text-align: center; line-height: 1; }
+  .floor .mark img { height: 44px; width: auto; vertical-align: middle; animation: wiggle 1.6s ease-in-out infinite; }
+  .floor.done { opacity: 0.85; }
+  .floor.current { background: var(--accent); color: var(--accent-ink); box-shadow: 0 0 0 4px #ffd27a, 0 6px 20px rgba(255,176,32,0.5); animation: popIn .6s ease-out both; min-height: 52px; }
+  .floor.current .num { color: var(--accent-ink); }
+  .floor.locked { opacity: 0.35; box-shadow: none; }
+  .dots { display: inline-flex; gap: 5px; }
+  .dots i, #hudDots i { display: inline-block; width: 13px; height: 13px; border-radius: 50%; background: rgba(255,255,255,0.25); box-shadow: inset 0 0 0 2px rgba(0,0,0,0.25); }
+  .dots i.atelier, #hudDots i.atelier { border-radius: 3px; }
+  .dots i.ok, #hudDots i.ok { background: var(--ok); }
+  .floor.current .dots i { background: rgba(0,0,0,0.2); } .floor.current .dots i.ok { background: #1f7a33; }
+  #towerSide { display: flex; flex-direction: column; align-items: center; gap: 22px; width: 420px; }
+  #towerSide img { height: 300px; width: auto; animation: bob 3s ease-in-out infinite; }
+  #towerSide p { margin: 0; font-size: 24px; font-weight: 800; text-align: center; color: var(--muted); }
+
+  /* fiche */
+  .cardBox { background: var(--panel); border-radius: 30px; padding: 36px 48px; display: grid; grid-template-columns: 1.15fr 1fr; gap: 40px; align-items: center; width: 1120px; box-sizing: border-box; box-shadow: 0 10px 40px rgba(0,0,0,0.4); }
+  .cardBox .eyebrow { font-family: var(--display); color: var(--accent); font-size: 22px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .cardBox h2 { font-size: 54px; margin-bottom: 10px; }
+  #cardText { font-size: 38px; font-weight: 800; line-height: 1.45; }
+  #cardText p { margin: 3px 0; animation: lineIn .5s ease-out both; }
+  #cardSvg { background: #fff6e6; border-radius: 20px; padding: 12px; }
+  #cardSvg svg { width: 100%; height: auto; display: block; }
+
+  /* jeu */
+  #canvas { position: absolute; left: 0; top: 0; width: 1280px; height: 800px; touch-action: none; display: block; }
+  #hud { position: absolute; left: 0; top: 0; width: 1280px; height: 90px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 16px;
+    background: linear-gradient(#141020, #231a3a); border-bottom: 3px solid #4a3d6a; }
+  #hud .left { display: flex; flex-direction: column; min-width: 150px; }
+  #hud .left b { font-family: var(--display); color: var(--accent); font-size: 23px; line-height: 1.1; }
+  #hud .left span { font-weight: 800; font-size: 19px; line-height: 1.1; display: inline-flex; align-items: center; }
+  #hudDots { display: inline-flex; gap: 6px; margin-left: 10px; }
+  #hudDots i { width: 15px; height: 15px; }
+  #hudDots i.now { background: var(--accent); box-shadow: 0 0 0 3px rgba(255,176,32,0.35); }
+  #hudTools { display: flex; gap: 8px; }
+  #hud button { font-size: 20px; padding: 10px 18px; box-shadow: 0 3px 0 #b57700; display: inline-flex; align-items: center; gap: 8px; }
+  #hud button.ghost { box-shadow: 0 3px 0 #1a1230; }
+  #hud button.tool { background: var(--panel-2); color: var(--fg); box-shadow: 0 3px 0 #1a1230; }
+  #hud button.tool.on { background: var(--sky); color: #06243a; box-shadow: 0 3px 0 #2a7aa8; }
+  #hud .spacer { flex: 1; }
+  #btnOn { background: #4a4f56; color: #fff; box-shadow: 0 3px 0 #26292d; min-width: 120px; }
+  #btnOn.on { background: #ffd24a; color: var(--accent-ink); box-shadow: 0 3px 0 #b57700; }
+  #btnFilings.on { background: var(--sky); color: #06243a; }
+  #btnShow { background: var(--sky); color: #06243a; box-shadow: 0 3px 0 #2a7aa8; }
+  .pole { display: inline-flex; border-radius: 6px; overflow: hidden; margin-left: 6px; }
+  .pole b { width: 26px; text-align: center; color: #fff; }
+  .pole b:first-child { background: var(--blue); } .pole b:last-child { background: var(--red); }
+  .pole.flip b:first-child { background: var(--red); } .pole.flip b:last-child { background: var(--blue); }
+  .ico { display: inline-block; width: 32px; height: 12px; border-radius: 3px; background: linear-gradient(90deg, var(--blue) 50%, var(--red) 50%); }
+  .ico.hs { width: 20px; height: 20px; border: 6px solid var(--red); border-bottom: 0; border-radius: 20px 20px 0 0; background: none; box-sizing: border-box; }
+  #gauge { font-size: 17px; font-weight: 800; color: var(--muted); }
+  #hint { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--fg); color: #2b1a00; border-radius: 20px; padding: 14px 24px; font-size: 23px; font-weight: 800;
+    max-width: 900px; box-shadow: 0 8px 30px rgba(0,0,0,0.5); cursor: pointer; }
+  #hint::after { content: ''; position: absolute; left: 50%; bottom: -12px; border: 12px solid transparent; border-top-color: var(--fg); border-bottom: 0; transform: translateX(-50%); }
+
+  /* fin */
+  #end img { height: 400px; width: auto; animation: bob 2.4s ease-in-out infinite; }
+  #end h2 { font-size: 70px; color: var(--accent); }
+  #end p { font-size: 28px; font-weight: 800; text-align: center; margin: 0; }
+
+  button.small { font-size: 20px; padding: 10px 20px; }
+  #iosHint { background: rgba(27,20,48,0.85); border-radius: 14px; padding: 10px 18px; font-size: 19px; font-weight: 800; color: var(--muted); }
+  #iosHint .share { display: inline-block; border: 2px solid var(--sky); color: var(--sky); border-radius: 6px; padding: 0 8px; margin: 0 2px; }
+  #rotateHint { position: fixed; left: 0; right: 0; bottom: 8px; text-align: center; font-size: 14px; color: var(--muted); pointer-events: none; }
+</style>
+
+<div id="app">
+  <section id="title" class="screen">
+    <div class="bgimg" aria-hidden="true"></div>
+    <h1>La Tour aux Aimants</h1>
+    <div id="intro"></div>
+    <div class="row">
+      <button id="btnIntroRead" class="ghost" type="button">🔊 Écouter</button>
+      <button id="btnPlay" type="button">Jouer</button>
+      <button id="btnFull" class="ghost" type="button">⛶ Plein écran</button>
+    </div>
+    <div class="row">
+      <button id="btnReset" class="ghost small" type="button" hidden>Recommencer la tour</button>
+      <button id="btnInstall" class="small" type="button" hidden>📲 Installer sur l'appareil</button>
+    </div>
+    <div id="iosHint" hidden>Pour l'installer : bouton Partager <span class="share">⎙</span> puis « Sur l'écran d'accueil »</div>
+  </section>
+
+  <section id="tower" class="screen" hidden>
+    <div id="floors" role="list"></div>
+    <div id="towerSide">
+      <img src="assets/sorciere_balai.png" alt="La sorcière s'enfuit avec le chat">
+      <p id="towerText"></p>
+      <button id="btnClimb" type="button">Monter</button>
+      <button id="btnHome" class="ghost" type="button">Accueil</button>
+    </div>
+  </section>
+
+  <section id="card" class="screen" hidden>
+    <div class="cardBox">
+      <div>
+        <div class="eyebrow" id="cardFloor">Étage 1</div>
+        <h2 id="cardTitle"></h2>
+        <div id="cardText"></div>
+        <div class="row" style="justify-content:flex-start; margin-top:22px">
+          <button id="btnRead" class="ghost" type="button">🔊 Écouter</button>
+          <button id="btnGo" type="button">C'est parti !</button>
+          <button id="btnCardBack" class="ghost" type="button">Retour</button>
+        </div>
+      </div>
+      <div id="cardSvg"></div>
+    </div>
+  </section>
+
+  <section id="game" class="screen" hidden>
+    <canvas id="canvas" width="1280" height="800"></canvas>
+    <div id="hud">
+      <div class="left"><b id="hudFloor">Étage 1</b><span><span id="hudTitle"></span><span id="hudDots"></span></span></div>
+      <div id="hudTools"></div>
+      <button id="btnFlip" class="ghost" type="button" hidden>↻ Retourner</button>
+      <button id="btnOn" type="button" hidden>ÉTEINT</button>
+      <button id="btnTurn" class="ghost" type="button" hidden>+ 1 tour</button>
+      <button id="btnFilings" class="ghost" type="button" hidden>Limaille</button>
+      <span id="gauge" hidden></span>
+      <span class="spacer"></span>
+      <button id="btnShow" type="button" hidden>Montre-moi</button>
+      <button id="btnFullHud" class="ghost" type="button" aria-label="Plein écran">⛶</button>
+      <button id="btnHint" class="ghost" type="button" aria-label="Indice">?</button>
+      <button id="btnRestart" class="ghost" type="button" aria-label="Recommencer">↺</button>
+      <button id="btnTower" class="ghost" type="button" aria-label="Retour à la tour">🏰</button>
+    </div>
+    <div id="hint" hidden><span id="hintText"></span></div>
+  </section>
+
+  <section id="end" class="screen" hidden>
+    <img src="assets/chat_saute.png" alt="Le chat libre">
+    <h2>Bravo !</h2>
+    <p>Tu as délivré le chat.<br>Seize étages, et la sorcière est partie.</p>
+    <button id="btnEndHome" type="button">Retour à l'accueil</button>
+  </section>
+</div>
+<div id="rotateHint" hidden>Tourne la tablette pour jouer en grand</div>
+
+<script>
+/* Moteur du jeu « La Tour aux Aimants » : physique magnétique 2D, sans DOM.
+   Fonctionne dans le navigateur (window.Engine) et dans Node (module.exports) pour les tests. */
+(function (root) {
+  'use strict';
+
+  const W = 1280, H = 800;
+  const G = 2200;                 // gravité px/s²
+  const DT = 1 / 120;             // pas de simulation fixe
+
+  // ---------- Outils (aimants tenus par le doigt, ou grue) ----------
+  const TOOLS = {
+    bar:       { label: 'Aimant',        strength: 22000,  range: 210, liftMass: 1,   poles: true,  holdOnly: true },
+    double:    { label: 'Aimant double', strength: 32000, range: 340, liftMass: 2,   poles: true,  holdOnly: true },
+    horseshoe: { label: 'Fer à cheval',  strength: 45000, range: 230, liftMass: 3.5, poles: true,  holdOnly: true },
+    nail:      { label: 'Clou',          strength: 16000,  range: 170, liftMass: 0.5, poles: false, holdOnly: true },
+    electro:   { label: 'Électroaimant', strength: 36000, range: 240, liftMass: 6,   poles: false, holdOnly: false },
+    compass:   { label: 'Boussole',      strength: 0,     range: 0,   liftMass: 0,   poles: false, holdOnly: true },
+  };
+
+  // ---------- Corps : valeurs par défaut par type ----------
+  const KINDS = {
+    knight: { w: 70, h: 110, mat: 'iron', mass: 5,   tag: 'knight', maxSpeed: 380 },
+    straw:  { w: 70, h: 110, mat: 'straw', mass: 5,  tag: 'straw' },
+    sword:  { w: 26, h: 96,  mat: 'iron', mass: 1,   tag: 'blade', hook: true },
+    bolt:   { w: 90, h: 20,  mat: 'iron', mass: 1,   rail: 'x' },
+    ring:   { w: 44, h: 44,  mat: 'iron', mass: 0.5, chain: true },
+    key:    { w: 54, h: 30,  mat: 'iron', mass: 0.5, chain: true },
+    herse:  { w: 180, h: 150, mat: 'iron', mass: 3,  rail: 'y', gravity: true },
+    lever:  { w: 30, h: 90,  mat: 'wood', mass: 1,   rail: 'y', grab: true },
+    giant:  { w: 170, h: 64, mat: 'iron', mass: 7,   rail: 'x', pole: 'N' },
+  };
+
+  function rectsOverlap(a, b) {
+    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+  }
+  function pointIn(p, r) { return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h; }
+  function center(b) { return { x: b.x + b.w / 2, y: b.y + b.h / 2 }; }
+  function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+  // Le segment p1-p2 coupe-t-il le rectangle r ? (Liang–Barsky)
+  function segmentHitsRect(p1, p2, r) {
+    let t0 = 0, t1 = 1;
+    const dx = p2.x - p1.x, dy = p2.y - p1.y;
+    const checks = [[-dx, p1.x - r.x], [dx, r.x + r.w - p1.x], [-dy, p1.y - r.y], [dy, r.y + r.h - p1.y]];
+    for (const [p, q] of checks) {
+      if (p === 0) { if (q < 0) return false; }
+      else {
+        const t = q / p;
+        if (p < 0) { if (t > t1) return false; if (t > t0) t0 = t; }
+        else { if (t < t0) return false; if (t < t1) t1 = t; }
+      }
+    }
+    return true;
+  }
+
+  function opposite(pole) { return pole === 'N' ? 'S' : 'N'; }
+
+  class World {
+    constructor(level) {
+      this.level = level;
+      this.time = 0;
+      this.won = false;
+      this.winTime = 0;
+      this.flags = {};
+      this.events = [];
+      this.solids = (level.solids || []).map((s, i) => Object.assign({ id: 's' + i, mat: 'stone' }, s));
+      this.bodies = (level.bodies || []).map((b) => {
+        const k = KINDS[b.kind] || {};
+        const body = Object.assign({ vx: 0, vy: 0, grounded: false, attached: null, captured: false,
+          ko: false, latched: false, hidden: false, consumed: false, hooked: false, pole: null }, k, b);
+        if (k.hook && b.hook !== false) body.hooked = true;
+        if (body.randomPole) body.pole = Math.random() < 0.5 ? 'N' : 'S';
+        if (body.rail) {
+          const r = body.rail;
+          body.rail = typeof r === 'string' ? { axis: r } : Object.assign({}, r);
+          if (body.rail.axis === 'x') { body.rail.min = body.rail.min ?? body.x; body.rail.max = body.rail.max ?? body.x; }
+          else { body.rail.min = body.rail.min ?? body.y; body.rail.max = body.rail.max ?? body.y; }
+        }
+        return body;
+      });
+      this.sensors = (level.sensors || []).map((s) => Object.assign({ pressed: false, done: false }, s));
+      this.tools = (level.tools || []).map((t) => Object.assign({}, TOOLS[t.type], t));
+      this.toolIndex = 0;
+      this.flipped = false;
+      this.electroOn = false;
+      this.turns = level.turns ?? 1;
+      this.filings = false;
+      this.nailCharge = 0;
+      this.finger = { down: false, x: 0, y: 0, px: 0, py: 0 };
+      this.crane = level.crane ? { x: level.crane.x, y: level.crane.y } : null;
+      this.grabbing = null;          // corps saisi à la main (levier, grue)
+      this.sources = [];
+      this.pulls = [];
+      this.fingerBlocked = false;
+      this.cageOpen = 0;             // 0..1 ouverture de la cage
+    }
+
+    // ----- entrées -----
+    get tool() { return this.tools[this.toolIndex] || null; }
+    selectTool(i) { if (i >= 0 && i < this.tools.length) { this.toolIndex = i; this.flipped = false; } }
+    flip() { if (this.tool && this.tool.poles) this.flipped = !this.flipped; }
+    toggleElectro() { if (this.tool && this.tool.type === 'electro') this.electroOn = !this.electroOn; }
+    addTurn() { if (this.turns < 8) this.turns += 1; }
+    toggleFilings() { this.filings = !this.filings; }
+
+    pointerDown(x, y) {
+      this.finger.down = true; this.finger.x = this.finger.px = x; this.finger.y = this.finger.py = y;
+      // Saisie à la main : levier ou grue
+      for (const b of this.bodies) {
+        if (b.grab && !b.hidden && pointIn({ x, y }, { x: b.x - 25, y: b.y - 25, w: b.w + 50, h: b.h + 50 })) {
+          this.grabbing = { body: b, dy: y - b.y, dx: x - b.x }; return;
+        }
+      }
+      // Passage secret : on tape sur le mur
+      for (const s of this.sensors) {
+        if (s.type === 'secret' && !s.done && pointIn({ x, y }, s)) {
+          s.done = true; this.flags[s.id] = true; this.events.push({ type: 'secret', id: s.id });
+          (s.reveals || []).forEach((id) => { const b = this.body(id); if (b) b.hidden = false; });
+        }
+      }
+    }
+    pointerMove(x, y) { this.finger.x = x; this.finger.y = y; }
+    pointerUp() { this.finger.down = false; this.grabbing = null; }
+
+    body(id) { return this.bodies.find((b) => b.id === id); }
+    sensor(id) { return this.sensors.find((s) => s.id === id); }
+    captured(id) { const b = this.body(id); return !!(b && b.captured); }
+    pressed(id) { const s = this.sensor(id); return !!(s && s.pressed); }
+    latched(id) { const b = this.body(id); return !!(b && b.latched); }
+    ko(id) { const b = this.body(id); return !!(b && b.ko); }
+    railAtMax(id) { const b = this.body(id); if (!b || !b.rail) return false; const v = b.rail.axis === 'x' ? b.x : b.y; return v >= b.rail.max - 2; }
+    railAtMin(id) { const b = this.body(id); if (!b || !b.rail) return false; const v = b.rail.axis === 'x' ? b.x : b.y; return v <= b.rail.min + 2; }
+
+    fingerInZone() {
+      const z = this.level.zone;
+      if (!z) return true;
+      const zones = Array.isArray(z) ? z : [z];
+      return zones.some((r) => pointIn(this.finger, r));
+    }
+
+    // ----- sources magnétiques actives -----
+    computeSources() {
+      const src = [];
+      const tool = this.tool;
+      if (tool) {
+        if (tool.type === 'electro') {
+          const pos = this.crane || { x: W / 2, y: 200 };
+          if (this.electroOn) {
+            const k = Math.min(this.turns, 8) / (this.level.turnsNeeded || 1);
+            const strength = tool.strength * Math.min(k, 1.5);
+            src.push({ kind: 'electro', x: pos.x, y: pos.y + 18, strength, range: tool.range,
+              liftMass: tool.liftMass * k, poleLeft: null, poleRight: null, root: true });
+          }
+        } else if (tool.type !== 'compass') {
+          const inZone = this.fingerInZone();
+          this.fingerBlocked = this.finger.down && !inZone;
+          let active = this.finger.down && inZone;
+          let strength = tool.strength, liftMass = tool.liftMass;
+          if (tool.type === 'nail') {
+            active = active && this.nailCharge > 0.02;
+            strength *= 0.4 + 0.6 * this.nailCharge;
+          }
+          if (active) {
+            src.push({ kind: tool.type, x: this.finger.x, y: this.finger.y, strength, range: tool.range,
+              liftMass, poleLeft: tool.poles ? (this.flipped ? 'N' : 'S') : null,
+              poleRight: tool.poles ? (this.flipped ? 'S' : 'N') : null, root: true });
+          }
+        }
+      }
+      // Aimants fixes du niveau (cachés ou non)
+      for (const m of this.level.magnets || []) {
+        src.push(Object.assign({ kind: 'fixed', liftMass: 0, poleLeft: null, poleRight: null, root: true, strength: 6000, range: 180 }, m));
+      }
+      // Un aimant qui tient déjà un corps : les corps « chaînables » s'accrochent au bout de la chaîne, pas à lui
+      for (const s of src) {
+        if (s.root) s.hasChild = this.bodies.some((b) => b.attached && !b.attached.parentBody && b.attached.sourceKind === s.kind);
+      }
+      // Corps aimantés par contact : le dernier maillon accroché devient une petite source (force venue de l'aimant d'origine)
+      for (const b of this.bodies) {
+        if (b.attached && !b.hidden && !b.child) {
+          let p = b;
+          while (p.attached && p.attached.parentBody) p = p.attached.parentBody;
+          const rootSrc = p.attached && src.find((s) => s.root && s.kind === p.attached.sourceKind);
+          if (!rootSrc) continue;
+          const c = center(b);
+          src.push({ kind: 'induced', x: c.x, y: b.y + b.h - 4, strength: rootSrc.strength * 0.75, range: rootSrc.range * 0.65,
+            liftMass: rootSrc.liftMass, poleLeft: null, poleRight: null, root: false, body: b, chainOnly: true });
+        }
+      }
+      return src;
+    }
+
+    blockedByIron(p1, p2) {
+      for (const s of this.solids) if (s.mat === 'iron' && segmentHitsRect(p1, p2, s)) return true;
+      return false;
+    }
+
+    // Signe de l'interaction : +1 attire, -1 repousse
+    sign(src, b) {
+      if (!b.pole || !src.poleLeft) return 1;
+      const c = center(b);
+      const dx = c.x - src.x, dy = c.y - src.y;
+      if (Math.abs(dx) < Math.abs(dy) * 0.6) return 1; // au-dessus / en-dessous : neutre
+      const srcFacing = dx > 0 ? src.poleRight : src.poleLeft;         // pôle de l'aimant tourné vers le corps
+      const bodyFacing = dx > 0 ? b.pole : opposite(b.pole);              // b.pole = pôle sur le côté gauche du corps
+      return srcFacing === bodyFacing ? -1 : 1;
+    }
+
+    step(dt) {
+      // sous-pas fixes
+      let acc = dt;
+      while (acc > 0) { const h = Math.min(DT, acc); this.substep(h); acc -= h; }
+    }
+
+    substep(dt) {
+      this.time += dt;
+      const tool = this.tool;
+      const f = this.finger;
+
+      // --- grue : la position suit le doigt quand on la tient ---
+      if (tool && tool.type === 'electro' && f.down && this.crane) {
+        const z = this.level.craneZone || { x: 40, y: 90, w: W - 80, h: 520 };
+        this.crane.x = Math.max(z.x, Math.min(z.x + z.w, f.x));
+        this.crane.y = Math.max(z.y, Math.min(z.y + z.h, f.y));
+      }
+      // --- levier saisi à la main ---
+      if (this.grabbing) {
+        const b = this.grabbing.body;
+        if (b.rail) {
+          if (b.rail.axis === 'y') b.y = Math.max(b.rail.min, Math.min(b.rail.max, f.y - this.grabbing.dy));
+          else b.x = Math.max(b.rail.min, Math.min(b.rail.max, f.x - this.grabbing.dx));
+        }
+      }
+      // --- clou frotté sur la magnétite ---
+      if (tool && tool.type === 'nail') {
+        const lode = this.level.lodestone;
+        if (f.down && lode && pointIn(f, lode)) {
+          const moved = Math.hypot(f.x - f.px, f.y - f.py);
+          if (moved > 0) this.nailCharge = Math.min(1, this.nailCharge + moved * 0.0035);
+        }
+        this.nailCharge = Math.max(0, this.nailCharge - dt / 14);
+      }
+      f.px = f.x; f.py = f.y;
+
+      const sources = this.computeSources();
+      this.sources = sources;
+      const pulls = [];
+
+      // --- forces magnétiques et accroches ---
+      for (const b of this.bodies) {
+        if (b.hidden || b.captured || b.latched || b.consumed || b.mat !== 'iron') continue;
+        if (b.grab) continue;
+        if (b.attached) continue;
+        if (b.lockedUntil && !b.lockedUntil(this)) continue;
+        const c = center(b);
+        let ax = 0, ay = 0, anyPull = false;
+        for (const s of sources) {
+          if (s.chainOnly && !b.chain) continue;
+          if (b.chain && s.root && s.hasChild) continue;
+          if (s.body === b || (s.body && s.body.child)) continue;
+          const d = dist(s, c);
+          const reach = s.range + Math.max(b.w, b.h) * 0.35;
+          if (d > reach || d < 0.5) continue;
+          if (this.blockedByIron(s, c)) continue;
+          const sg = this.sign(s, b);
+          const mag = s.strength * Math.max(0, 1 - d / reach) * sg;
+          const ux = (s.x - c.x) / d, uy = (s.y - c.y) / d;
+          const canLift = s.liftMass >= b.mass;
+          ax += ux * mag / b.mass;
+          if (canLift) ay += uy * mag / b.mass;
+          anyPull = true;
+          pulls.push({ from: s, to: c, sign: sg });
+          // accroche : corps léger assez proche d'un aimant qui l'attire
+          if (canLift && sg > 0) {
+            if (s.kind === 'induced') {
+              // maillon de chaîne : il s'accroche dès qu'il touche le maillon précédent
+              if (dist(center(s.body), c) < (b.h + s.body.h) / 2 + 12) { this.attach(b, s); break; }
+            } else {
+              const top = { x: c.x, y: b.y };
+              const dTop = dist(s, top);
+              const attachDist = 34 + (s.kind === 'horseshoe' ? 10 : 0);
+              if (dTop < attachDist || (d < attachDist + b.h * 0.5 && dTop < attachDist + 18)) {
+                this.attach(b, s);
+                break;
+              }
+            }
+          }
+        }
+        if (b.attached) continue;
+        if (anyPull && b.hooked) { b.hooked = false; this.events.push({ type: 'unhook', id: b.id }); }
+        b.ax = ax; b.ay = ay;
+      }
+      this.pulls = pulls;
+
+      // --- intégration ---
+      for (const b of this.bodies) {
+        if (b.hidden || b.latched || b.consumed || b.grab) continue;
+        if (b.captured) { b.vy += G * dt; b.y += b.vy * dt; if (b.y > H + 200) b.hidden = true; continue; }
+        if (b.attached) { this.followSource(b); continue; }
+        if (b.hooked) { b.vx = b.vy = 0; continue; }
+        const ax = b.ax || 0, ay = b.ay || 0;
+        if (b.rail) {
+          if (b.rail.axis === 'x') {
+            b.vx += ax * dt;
+            if (b.rail.flingAt !== undefined && b.x > b.rail.flingAt) b.vx = Math.max(b.vx, 700);
+            else { b.vx *= Math.exp(-5 * dt); b.vx = Math.max(-500, Math.min(500, b.vx)); }
+            if (Math.abs(ax) < 250 && Math.abs(b.vx) < 40) b.vx = 0;
+            b.x = Math.max(b.rail.min, Math.min(b.rail.max, b.x + b.vx * dt));
+            if (b.pole) this.stopAtMagnet(b);
+            if (b.x === b.rail.min || b.x === b.rail.max) b.vx = 0;
+          } else {
+            if (b.gravity) b.vy += G * dt;
+            b.vy += ay * dt;
+            b.vy *= Math.exp(-5 * dt); b.vy = Math.max(-500, Math.min(600, b.vy));
+            if (!b.gravity && Math.abs(ay) < 250 && Math.abs(b.vy) < 40) b.vy = 0;
+            b.y = Math.max(b.rail.min, Math.min(b.rail.max, b.y + b.vy * dt));
+            if (b.y === b.rail.min || b.y === b.rail.max) b.vy = 0;
+          }
+        } else {
+          b.vy += (G + ay) * dt;
+          b.vx += ax * dt;
+          if (b.grounded) {
+            const fr = Math.min(Math.abs(b.vx), 500 * dt);
+            b.vx -= Math.sign(b.vx) * fr;
+            if (Math.abs(ax) < 350 && Math.abs(b.vx) < 30) b.vx = 0;
+          } else {
+            b.vx *= Math.exp(-0.6 * dt);
+          }
+          const ms = b.maxSpeed || 900; b.vx = Math.max(-ms, Math.min(ms, b.vx));
+          b.vy = Math.max(-1200, Math.min(1500, b.vy));
+          this.moveWithCollisions(b, dt);
+        }
+        b.ax = b.ay = 0;
+      }
+
+      // --- interactions : épée sur chevalier ---
+      for (const s of this.bodies) {
+        if (s.tag !== 'blade' || s.hidden || s.attached) continue;
+        if (s.vy < 150) continue;
+        for (const k of this.bodies) {
+          if (k.tag !== 'knight' || k.ko || k.hidden || k.captured) continue;
+          const overlapX = s.x < k.x + k.w && s.x + s.w > k.x;
+          if (overlapX && s.y + s.h >= k.y && s.y + s.h <= k.y + k.h * 0.6) {
+            this.knockOut(k);
+            s.y = k.y + k.h - s.h; s.vy = 0; s.grounded = true;
+          }
+        }
+      }
+
+      // --- capteurs ---
+      for (const sn of this.sensors) {
+        if (sn.type === 'trap') {
+          for (const b of this.bodies) {
+            if (b.hidden || b.captured || b.attached || b.latched) continue;
+            if (sn.body && sn.body !== b.id) continue;
+            if (b.tag === 'straw') continue;
+            const c = center(b);
+            if (pointIn({ x: c.x, y: b.y + b.h - 4 }, sn) && (b.tag === 'knight' || b.tag === 'straw')) {
+              b.captured = true; b.vy = Math.max(0, b.vy); b.vx = 0;
+              this.events.push({ type: 'captured', id: b.id });
+            }
+          }
+        } else if (sn.type === 'button') {
+          let on = false;
+          for (const b of this.bodies) {
+            if (b.hidden || b.captured || b.attached) continue;
+            if (sn.minMass && b.mass < sn.minMass) continue;
+            const overlapX = b.x < sn.x + sn.w && b.x + b.w > sn.x;
+            const bottom = b.y + b.h;
+            if (overlapX && bottom >= sn.y - 4 && bottom <= sn.y + sn.h + 4) on = true;
+          }
+          if (on && !sn.pressed) this.events.push({ type: 'button', id: sn.id });
+          sn.pressed = on || (sn.sticky && sn.pressed);
+          if (sn.pressed && sn.removes) {
+            this.solids = this.solids.filter((s) => s.id !== sn.removes);
+            sn.removes = null; this.events.push({ type: 'open', id: sn.id });
+          }
+        } else if (sn.type === 'latch') {
+          const b = this.body(sn.body);
+          if (b && !b.latched && !b.hidden && pointIn(center(b), sn)) {
+            b.latched = true; this.detach(b); b.vx = b.vy = 0;
+            if (sn.snapY !== undefined) b.y = sn.snapY;
+            this.events.push({ type: 'latched', id: b.id });
+          }
+        } else if (sn.type === 'keyhole') {
+          const b = this.body(sn.body);
+          if (b && !b.consumed && !b.hidden && pointIn(center(b), sn)) {
+            b.consumed = true; b.hidden = true; b.attached = null; sn.pressed = true;
+            this.events.push({ type: 'key', id: sn.id });
+          }
+        }
+      }
+
+      // --- victoire ---
+      if (!this.won && this.level.win && this.level.win(this)) {
+        this.won = true; this.winTime = this.time; this.events.push({ type: 'win' });
+      }
+      if (this.won) this.cageOpen = Math.min(1, this.cageOpen + dt * 1.2);
+    }
+
+    attach(b, s) {
+      b.attached = { source: s, sourceKind: s.kind, parentBody: s.body || null };
+      if (s.body) s.body.child = b; else if (b.chain) s.hasChild = true;
+      b.vx = b.vy = 0; b.hooked = false; b.grounded = false;
+      this.events.push({ type: 'attach', id: b.id });
+      this.followSource(b);
+    }
+
+    // Un corps accroché suit sa source ; s'il rentre dans un mur, il se décroche.
+    followSource(b) {
+      const a = b.attached;
+      let src = null;
+      if (a.parentBody) {
+        const p = a.parentBody;
+        if (!p.attached || p.hidden) { this.detach(b); return; }
+        src = { x: p.x + p.w / 2, y: p.y + p.h - 4 };
+      } else {
+        src = this.sources.find((s) => s.root && s.kind === a.sourceKind) || null;
+        if (!src) { this.detach(b); return; }
+        a.source = src; // garde à jour la force transmise
+      }
+      let nx = src.x - b.w / 2, ny = src.y + 4;
+      if (b.rail) {
+        if (b.rail.axis === 'y') { nx = b.x; ny = Math.max(b.rail.min, Math.min(b.rail.max, ny)); }
+        else { ny = b.y; nx = Math.max(b.rail.min, Math.min(b.rail.max, nx)); }
+      }
+      const probe = { x: nx, y: ny, w: b.w, h: b.h };
+      for (const s of this.solids) {
+        if (!rectsOverlap(probe, s)) continue;
+        const overlapTop = probe.y + probe.h - s.y;     // le corps traîne sur un sol : on le pose dessus
+        if (!b.rail && overlapTop > 0 && probe.y <= s.y + 2 && probe.x + probe.w > s.x + 4 && probe.x < s.x + s.w - 4) {
+          ny = s.y - b.h; probe.y = ny; continue;
+        }
+        this.detach(b); return;
+      }
+      b.x = nx; b.y = ny;
+    }
+
+    detach(b) {
+      if (b.attached && b.attached.parentBody) b.attached.parentBody.child = null;
+      b.attached = null; b.vx = 0; b.vy = 0; b.grounded = false;
+      if (b.child) { const c = b.child; b.child = null; this.detach(c); }
+      this.events.push({ type: 'detach', id: b.id });
+    }
+
+    knockOut(k) {
+      k.ko = true; k.tag = 'knight'; k.koTime = this.time;
+      const bottom = k.y + k.h;
+      k.h = 62; k.w = 110; k.x -= 20; k.y = bottom - k.h;
+      k.vx = 0; k.vy = 0;
+      this.events.push({ type: 'ko', id: k.id });
+    }
+
+    // Les corps qui portent un aimant ne passent pas à travers l'aimant du doigt
+    stopAtMagnet(b) {
+      for (const s of this.sources) {
+        if (!s.root || s.kind === 'fixed' || s.kind === 'electro') continue;
+        const m = { x: s.x - 34, y: s.y - 20, w: 68, h: 40 };
+        if (!rectsOverlap(b, m)) continue;
+        const cx = b.x + b.w / 2;
+        if (cx < s.x) b.x = m.x - b.w; else b.x = m.x + m.w;
+        b.vx = 0;
+      }
+    }
+
+    moveWithCollisions(b, dt) {
+      // X
+      b.x += b.vx * dt;
+      for (const s of this.solids) {
+        if (!rectsOverlap(b, s)) continue;
+        if (b.vx > 0) b.x = s.x - b.w; else if (b.vx < 0) b.x = s.x + s.w;
+        b.vx = 0;
+      }
+      if (b.pole) this.stopAtMagnet(b);
+      // Y
+      const wasGrounded = b.grounded, vyBefore = b.vy;
+      b.y += b.vy * dt;
+      b.grounded = false;
+      for (const s of this.solids) {
+        if (!rectsOverlap(b, s)) continue;
+        if (b.vy > 0) { b.y = s.y - b.h; b.grounded = true; if (!wasGrounded && vyBefore > 250) this.events.push({ type: 'land', id: b.id, v: vyBefore }); }
+        else if (b.vy < 0) b.y = s.y + s.h;
+        b.vy = 0;
+      }
+      // sol de secours
+      if (b.y + b.h > H + 300) { b.hidden = true; }
+      if (b.x < -200 || b.x > W + 200) b.hidden = true;
+    }
+
+    // Direction de la boussole (vers la cible désignée par le niveau)
+    compassAngle() {
+      const t = this.level.compassTarget; if (!t) return null;
+      return Math.atan2(t.y - this.finger.y, t.x - this.finger.x);
+    }
+
+    drainEvents() { const e = this.events; this.events = []; return e; }
+  }
+
+  // Script de doigt : [['down',x,y,t], ['move',x,y,t], ['up',t], ['flip',t], ['tool',i,t], ['electro',t], ['turn',t], ['filings',t], ['tap',x,y,t], ['wait',t]]
+  // t = temps absolu (secondes) auquel l'action est terminée ; un 'move' interpole depuis la position précédente.
+  class Replay {
+    constructor(world, steps) { this.w = world; this.steps = steps; this.i = 0; this.t = 0; this.pos = { x: 0, y: 0 }; this.from = { x: 0, y: 0 }; this.anchorT = 0; this.done = false; }
+    get hand() { const s = this.steps[Math.min(this.i, this.steps.length - 1)]; return { x: this.pos.x, y: this.pos.y, down: this.w.finger.down, label: s && s[0] }; }
+    step(dt) {
+      if (this.done) return;
+      this.t += dt;
+      const w = this.w;
+      while (this.i < this.steps.length) {
+        const s = this.steps[this.i];
+        const endT = s[s.length - 1];
+        if (s[0] === 'move') {
+          const x = s[1], y = s[2];
+          if (this.t < endT) {
+            const k = Math.max(0, Math.min(1, (this.t - this.anchorT) / Math.max(1e-6, endT - this.anchorT)));
+            const nx = this.from.x + (x - this.from.x) * k, ny = this.from.y + (y - this.from.y) * k;
+            this.pos = { x: nx, y: ny }; if (w.finger.down) w.pointerMove(nx, ny);
+            return;
+          }
+          this.pos = { x, y }; if (w.finger.down) w.pointerMove(x, y);
+        } else if (this.t < endT) {
+          return;
+        } else {
+          switch (s[0]) {
+            case 'down': this.pos = { x: s[1], y: s[2] }; w.pointerDown(s[1], s[2]); break;
+            case 'up': w.pointerUp(); break;
+            case 'flip': w.flip(); break;
+            case 'tool': w.selectTool(s[1]); break;
+            case 'electro': w.toggleElectro(); break;
+            case 'turn': w.addTurn(); break;
+            case 'filings': w.toggleFilings(); break;
+            case 'tap': this.pos = { x: s[1], y: s[2] }; w.pointerDown(s[1], s[2]); w.pointerUp(); break;
+            case 'wait': break;
+          }
+        }
+        this.i++; this.anchorT = endT; this.from = { x: this.pos.x, y: this.pos.y };
+      }
+      this.done = true;
+    }
+  }
+
+  const Engine = { World, Replay, TOOLS, KINDS, W, H, G, segmentHitsRect, rectsOverlap, pointIn };
+  if (typeof module !== 'undefined' && module.exports) module.exports = Engine; else root.Engine = Engine;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+/* Les 16 étages de la tour. Chaque étage = (atelier) + salle 1 + salle 2.
+   Coordonnées logiques 1280×800 (zone de jeu : y de 90 à 800).
+   Chaque salle a une démo (script de doigt) : elle sert d'exemple dans l'atelier, de « Montre-moi », et de test automatique. */
+(function (root) {
+  'use strict';
+
+  const FLOOR = 720;
+  const KY = FLOOR - 110;
+  const WALLS = () => [
+    { id: 'ceil', x: 0, y: 90, w: 1280, h: 20, mat: 'stone' },
+    { id: 'wallL', x: 0, y: 90, w: 40, h: 710, mat: 'stone' },
+    { id: 'wallR', x: 1240, y: 90, w: 40, h: 710, mat: 'stone' },
+  ];
+  // Sol avec des trous [[a,b],...]
+  function room(gaps = []) {
+    const s = WALLS();
+    let x = 0, i = 0;
+    for (const [a, b] of gaps) { s.push({ id: 'floor' + i++, x, y: FLOOR, w: a - x, h: 80, mat: 'stone' }); x = b; }
+    s.push({ id: 'floor' + i, x, y: FLOOR, w: 1280 - x, h: 80, mat: 'stone' });
+    return s;
+  }
+  const trap = (id, a, b, y = FLOOR) => ({ id, type: 'trap', x: a, y: y + 2, w: b - a, h: 70 });
+  const glass = (x) => ({ id: 'glass' + x, x, y: 110, w: 20, h: 610, mat: 'glass' });
+  const niche = (x, id = '') => [{ id: 'nL' + id, x: x - 50, y: 560, w: 24, h: 160, mat: 'stone' }, { id: 'nR' + id, x: x + 96, y: 560, w: 24, h: 160, mat: 'stone' }];
+  const latchAt = (id, body, x, y, w, snapY) => ({ id, type: 'latch', body, x, y, w, h: 36, snapY });
+
+  // Constructeur de démo : temps cumulé
+  function D() {
+    const steps = []; let t = 0;
+    const api = {
+      down(x, y, d = 0.3) { t += d; steps.push(['down', x, y, t]); return api; },
+      move(x, y, d) { t += d; steps.push(['move', x, y, t]); return api; },
+      up(d = 0.15) { t += d; steps.push(['up', t]); return api; },
+      flip(d = 0.4) { t += d; steps.push(['flip', t]); return api; },
+      tool(i, d = 0.5) { t += d; steps.push(['tool', i, t]); return api; },
+      electro(d = 0.5) { t += d; steps.push(['electro', t]); return api; },
+      turn(d = 0.35) { t += d; steps.push(['turn', t]); return api; },
+      filings(d = 0.4) { t += d; steps.push(['filings', t]); return api; },
+      tap(x, y, d = 0.4) { t += d; steps.push(['tap', x, y, t]); return api; },
+      wait(d) { t += d; steps.push(['wait', t]); return api; },
+      rub(n = 10) { for (let i = 0; i < n; i++) { api.move(300, 620, 0.25); api.move(130, 600, 0.25); } return api; },
+      end() { return steps; },
+    };
+    return api;
+  }
+  // Pêche à la chaîne : anneaux de x1 à x2 (hauteur de ramassage 230), puits à wx, serrure à kx
+  const fish = (d, x1, x2, wx, kx, ky = 150) => d.down(x1, 366).wait(0.3).move(x1, 230, 0.5).move(x2, 230, 3.5).wait(0.4).move(wx, 230, 1.5).move(wx, 412, 2).wait(1.5).move(wx, ky, 2).move(kx, ky, 2).wait(1.2);
+
+  const bar = [{ type: 'bar' }];
+  const F = [];
+
+  // 1 ------------------------------------------------------------ L'aimant
+  F.push({ n: 1, title: "L'aimant", taunt: 'Ha ha ! Trop tard !', rooms: [
+    { kind: 'atelier', tools: bar, solids: room([[700, 830]]), bodies: [{ id: 'k', kind: 'knight', x: 400, y: KY }], sensors: [trap('t', 700, 830)],
+      hint: 'Touche près du chevalier et glisse vers le trou.', win: (w) => w.captured('k'),
+      demo: D().down(500, 650).move(900, 650, 2.5).wait(2.5).end() },
+    { kind: 'salle', tools: bar, solids: room([[720, 850]]), bodies: [{ id: 'k', kind: 'knight', x: 300, y: KY }], sensors: [trap('t', 720, 850)],
+      cage: { x: 1040, y: 540 }, witch: { x: 920, y: 560 }, hint: 'Ton doigt tient l’aimant. Attire le chevalier dans le trou.', win: (w) => w.captured('k'),
+      demo: D().down(420, 650).move(900, 650, 2.5).wait(3).end() },
+    { kind: 'salle', tools: bar, solids: room([[380, 510], [760, 890]]), bodies: [{ id: 'k1', kind: 'knight', x: 200, y: KY }, { id: 'k2', kind: 'knight', x: 560, y: KY }],
+      sensors: [trap('t1', 380, 510), trap('t2', 760, 890)], cage: { x: 1060, y: 540 }, witch: { x: 940, y: 560 },
+      hint: 'Deux chevaliers, deux trous. Un par un.', win: (w) => w.captured('k1') && w.captured('k2'),
+      demo: D().down(300, 650).move(650, 650, 2).wait(1).move(1000, 650, 2.5).wait(3).end() },
+  ] });
+
+  // 2 ------------------------------------------------------------ Attire ou pas
+  F.push({ n: 2, title: 'Attire ou pas', taunt: 'La paille, ça ne colle pas !', rooms: [
+    { kind: 'atelier', tools: bar, solids: room([[800, 930]]), bodies: [{ id: 's', kind: 'straw', x: 600, y: KY }, { id: 'k', kind: 'knight', x: 300, y: KY }], sensors: [trap('t', 800, 930)],
+      hint: 'Essaie sur les deux. Un seul est en fer.', win: (w) => w.captured('k'),
+      demo: D().down(700, 650).wait(1.5).up().down(420, 650).move(1000, 650, 3).wait(3).end() },
+    { kind: 'salle', tools: bar, solids: room([[560, 690]]), bodies: [{ id: 's', kind: 'straw', x: 380, y: KY }, { id: 'k', kind: 'knight', x: 960, y: KY }], sensors: [trap('t', 560, 690)],
+      cage: { x: 100, y: 540 }, witch: { x: 230, y: 560 }, hint: 'Un garde est en fer, l’autre en paille. Lequel vient vers l’aimant ?', win: (w) => w.captured('k'),
+      demo: D().down(480, 650).wait(1.5).up().down(800, 665).move(560, 665, 2.5).wait(3).end() },
+    { kind: 'salle', tools: bar, solids: room([[560, 690]]), bodies: [{ id: 's1', kind: 'straw', x: 380, y: KY }, { id: 's2', kind: 'straw', x: 760, y: KY }, { id: 'k', kind: 'knight', x: 120, y: KY }],
+      sensors: [trap('t', 560, 690)], cage: { x: 1060, y: 540 }, witch: { x: 940, y: 560 }, hint: 'Trois gardes. Cherche celui qui est en fer.', win: (w) => w.captured('k'),
+      demo: D().down(300, 665).move(700, 665, 3).wait(3).end() },
+  ] });
+
+  // 3 ------------------------------------------------------------ La serrure
+  const door = (x) => ({ id: 'door', x, y: 110, w: 70, h: 610, mat: 'wood' });
+  F.push({ n: 3, title: 'La serrure', taunt: 'Ma porte est fermée à clé !', rooms: [
+    { kind: 'atelier', tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 }, solids: room().concat([door(640)]),
+      bodies: [{ id: 'bolt', kind: 'bolt', x: 630, y: 420, rail: { axis: 'y', min: 290, max: 420 } }], sensors: [latchAt('l', 'bolt', 620, 282, 110, 290)],
+      hint: 'Reste à gauche de la porte. Tire le verrou vers le haut.', win: (w) => w.latched('bolt'),
+      demo: D().down(600, 430).move(600, 280, 1.5).wait(1.5).end() },
+    { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 }, solids: room().concat([door(640)]),
+      bodies: [{ id: 'bolt', kind: 'bolt', x: 630, y: 420, rail: { axis: 'y', min: 290, max: 420 } }], sensors: [latchAt('l', 'bolt', 620, 282, 110, 290)],
+      cage: { x: 1000, y: 540 }, witch: { x: 860, y: 560 }, hint: 'Le verrou est en fer, derrière la porte en bois. Fais-le glisser vers le haut.', win: (w) => w.latched('bolt'),
+      demo: D().down(600, 300).wait(3).end() },
+    { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 }, solids: room().concat([door(640)]),
+      bodies: [{ id: 'bA', kind: 'bolt', x: 630, y: 420, rail: { axis: 'y', min: 290, max: 420 } }, { id: 'bB', kind: 'bolt', x: 630, y: 520, rail: { axis: 'y', min: 520, max: 650 } }],
+      sensors: [latchAt('lA', 'bA', 620, 282, 110, 290), latchAt('lB', 'bB', 620, 642, 110, 650)],
+      cage: { x: 1000, y: 540 }, witch: { x: 860, y: 560 }, hint: 'Deux verrous : un vers le haut, un vers le bas.', win: (w) => w.latched('bA') && w.latched('bB'),
+      demo: D().down(600, 300).wait(2.5).move(600, 680, 1.5).wait(2.5).end() },
+  ] });
+
+  // 4 ------------------------------------------------------------ L'épée
+  F.push({ n: 4, title: "L'épée", taunt: 'Mon garde ne bougera pas !', rooms: [
+    { kind: 'atelier', tools: bar, solids: room().concat(niche(760)), bodies: [{ id: 'k', kind: 'knight', x: 760, y: KY }, { id: 'sword', kind: 'sword', x: 600, y: 250 }],
+      sensors: [], hint: 'Touche l’épée, porte-la au-dessus du chevalier, lève le doigt.', win: (w) => w.ko('k'),
+      demo: D().down(613, 240).wait(0.4).move(773, 300, 1.5).up().wait(3).end() },
+    { kind: 'salle', tools: bar, solids: room().concat(niche(810)), bodies: [{ id: 'k', kind: 'knight', x: 810, y: KY }, { id: 'sword', kind: 'sword', x: 150, y: 250 }],
+      sensors: [], cage: { x: 1060, y: 540 }, witch: { x: 1130, y: 380 }, hint: 'Soulève l’épée, mets-la au-dessus du chevalier, puis lève le doigt.', win: (w) => w.ko('k'),
+      demo: D().down(163, 240).wait(0.4).move(823, 300, 2.2).up().wait(3).end() },
+    { kind: 'salle', tools: bar, solids: room().concat(niche(460, 'a'), niche(860, 'b')),
+      bodies: [{ id: 'k1', kind: 'knight', x: 460, y: KY }, { id: 'k2', kind: 'knight', x: 860, y: KY }, { id: 'sword', kind: 'sword', x: 150, y: 250 }],
+      sensors: [], cage: { x: 1080, y: 540 }, witch: { x: 1140, y: 380 }, hint: 'Une seule épée pour deux chevaliers. Reprends-la après le premier.', win: (w) => w.ko('k1') && w.ko('k2'),
+      demo: D().down(163, 240).wait(0.4).move(473, 300, 2).up().wait(2.5).down(473, 610).wait(0.5).move(473, 300, 1).move(873, 300, 1.5).up().wait(3).end() },
+  ] });
+
+  // 5 ------------------------------------------------------------ Les pôles
+  const polesRoom = (x0, pole, mirror) => {
+    const z = mirror ? { x: 780, y: 110, w: 460, h: 610 } : { x: 40, y: 110, w: 460, h: 610 };
+    const gap = mirror ? [400, 580] : [700, 880];
+    const plat = mirror ? { id: 'plat', x: 580, y: 600, w: 180, h: 120, mat: 'stone' } : { id: 'plat', x: 520, y: 600, w: 180, h: 120, mat: 'stone' };
+    return { tools: bar, canFlip: true, zone: z, solids: room([gap]).concat([glass(mirror ? 760 : 500), plat]),
+      bodies: [{ id: 'k', kind: 'knight', x: x0, y: 600 - 110, pole }], sensors: [trap('t', gap[0], gap[1])], win: (w) => w.captured('k') };
+  };
+  F.push({ n: 5, title: 'Les pôles', taunt: 'Mon chevalier a son propre aimant !', rooms: [
+    Object.assign(polesRoom(560, 'S', false), { kind: 'atelier', hint: 'Il vient vers toi ? Retourne ton aimant, et il recule.',
+      demo: D().down(480, 560).wait(2.5).flip().wait(4).end() }),
+    Object.assign(polesRoom(620, 'S', true), { kind: 'salle', cage: { x: 100, y: 540 }, witch: { x: 240, y: 560 },
+      hint: 'Même chose, mais de l’autre côté. Pense au pôle qui est en face.', demo: D().down(800, 560).wait(2.5).flip().wait(4).end() }),
+    { kind: 'salle', tools: bar, canFlip: true, solids: room([[560, 650], [1000, 1240]]).concat([{ id: 'pA', x: 400, y: 520, w: 160, h: 120, mat: 'stone' }, { id: 'pB', x: 650, y: 520, w: 350, h: 120, mat: 'stone' }]),
+      bodies: [{ id: 'kA', kind: 'knight', x: 670, y: 410, pole: 'S' }, { id: 'kB', kind: 'knight', x: 880, y: 410, pole: 'N' }],
+      sensors: [trap('tA', 560, 650), trap('tB', 1000, 1240)], cage: { x: 100, y: 540 }, witch: { x: 240, y: 560 },
+      hint: 'Deux chevaliers, deux aimants. L’un vient, l’autre recule : approche du bon côté.', win: (w) => w.captured('kA') && w.captured('kB'),
+      demo: D().down(520, 540).wait(3).move(790, 540, 1.5).wait(3).end() },
+  ] });
+
+  // 6 ------------------------------------------------------------ La portée
+  const reachRoom = (bodies, gaps, sensors, win) => ({ tools: [{ type: 'bar' }, { type: 'double' }], zone: { x: 40, y: 110, w: 200, h: 610 }, solids: room(gaps).concat([glass(240)]), bodies, sensors, win });
+  F.push({ n: 6, title: 'La portée', taunt: 'Trop loin pour ton aimant !', rooms: [
+    Object.assign(reachRoom([{ id: 'k', kind: 'knight', x: 500, y: KY }], [[330, 460]], [trap('t', 330, 460)], (w) => w.captured('k')),
+      { kind: 'atelier', hint: 'L’aimant simple ne porte pas assez loin. Prends l’aimant double.', demo: D().down(230, 650).wait(2).up().tool(1).down(230, 650).wait(5).end() }),
+    Object.assign(reachRoom([{ id: 'k', kind: 'knight', x: 500, y: KY }], [[330, 460]], [trap('t', 330, 460)], (w) => w.captured('k')),
+      { kind: 'salle', cage: { x: 1040, y: 540 }, witch: { x: 900, y: 560 }, hint: 'Reste derrière la vitre. Quel aimant tire assez loin ?', demo: D().tool(1).down(230, 650).wait(5).end() }),
+    Object.assign(reachRoom([{ id: 'k1', kind: 'knight', x: 430, y: KY }, { id: 'k2', kind: 'knight', x: 540, y: KY }], [[330, 420]], [trap('t', 330, 420)], (w) => w.captured('k1') && w.captured('k2')),
+      { kind: 'salle', cage: { x: 1040, y: 540 }, witch: { x: 900, y: 560 }, hint: 'Le premier est près, le second est loin. Change d’aimant quand il le faut.',
+        demo: D().down(230, 650).wait(3).up().tool(1).down(230, 650).wait(5).end() }),
+  ] });
+
+  // 7 ------------------------------------------------------------ Le fer à cheval
+  const herse = (id, x) => ({ id, kind: 'herse', x, y: 570, rail: { axis: 'y', min: 360, max: 570 } });
+  const hTools = [{ type: 'bar' }, { type: 'horseshoe' }];
+  F.push({ n: 7, title: 'Le fer à cheval', taunt: 'Ma herse est bien trop lourde !', rooms: [
+    { kind: 'atelier', tools: hTools, solids: room(), bodies: [herse('herse', 880)], sensors: [latchAt('latch', 'herse', 880, 420, 180, 360)],
+      hint: 'La herse est lourde. Essaie le fer à cheval.', win: (w) => w.latched('herse'),
+      demo: D().down(970, 560).wait(1.5).up().tool(1).down(970, 560).wait(0.6).move(970, 330, 2).wait(1).end() },
+    { kind: 'salle', tools: hTools, solids: room(), bodies: [herse('herse', 880)], sensors: [latchAt('latch', 'herse', 880, 420, 180, 360)],
+      cage: { x: 900, y: 540 }, witch: { x: 1110, y: 560 }, hint: 'Le fer à cheval a ses deux pôles au même endroit : il tire plus fort.', win: (w) => w.latched('herse'),
+      demo: D().tool(1).down(970, 560).wait(0.6).move(970, 330, 2).wait(1).end() },
+    { kind: 'salle', tools: hTools, solids: room(), bodies: [herse('hA', 300), herse('hB', 880)], sensors: [latchAt('lA', 'hA', 300, 420, 180, 360), latchAt('lB', 'hB', 880, 420, 180, 360)],
+      cage: { x: 900, y: 540 }, witch: { x: 1110, y: 560 }, hint: 'Deux herses. Une après l’autre.', win: (w) => w.latched('hA') && w.latched('hB'),
+      demo: D().tool(1).down(390, 560).wait(0.6).move(390, 330, 2).wait(0.5).up().down(970, 560).wait(0.6).move(970, 330, 2).wait(1).end() },
+  ] });
+
+  // 8 ------------------------------------------------------------ La chaîne
+  const wellSolids = (depth) => [
+    { id: 'ceil', x: 0, y: 90, w: 1280, h: 20 }, { id: 'wallL', x: 0, y: 90, w: 40, h: 710 }, { id: 'wallR', x: 1240, y: 90, w: 40, h: 710 },
+    { id: 'platL', x: 0, y: 420, w: 600, h: 380 }, { id: 'platR', x: 720, y: 420, w: 560, h: 380 }, { id: 'bottom', x: 600, y: 420 + depth, w: 120, h: 380 - depth },
+  ];
+  const rings = (xs, prefix = 'r') => xs.map((x, i) => ({ id: prefix + (i + 1), kind: 'ring', x, y: 376 }));
+  F.push({ n: 8, title: 'La chaîne', taunt: 'La clé est tout au fond du puits !', rooms: [
+    { kind: 'atelier', tools: bar, zone: { x: 40, y: 110, w: 1200, h: 310 }, solids: wellSolids(200), bodies: rings([180, 250, 320]).concat([{ id: 'key', kind: 'key', x: 633, y: 590 }]),
+      sensors: [{ id: 'keyhole', type: 'keyhole', body: 'key', x: 960, y: 260, w: 150, h: 150 }], well: { x: 600, y: 420, w: 120, h: 200 },
+      hint: 'Colle les anneaux les uns aux autres, puis descends la chaîne dans le puits.', win: (w) => w.pressed('keyhole'),
+      demo: fish(D(), 202, 400, 660, 1035).end() },
+    { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 1200, h: 310 }, solids: wellSolids(320), bodies: rings([180, 250, 320, 390]).concat([{ id: 'key', kind: 'key', x: 633, y: 710 }]),
+      sensors: [{ id: 'keyhole', type: 'keyhole', body: 'key', x: 960, y: 260, w: 150, h: 150 }], cage: { x: 1040, y: 250 }, witch: { x: 860, y: 270 }, well: { x: 600, y: 420, w: 120, h: 320 },
+      hint: 'Il faut les quatre anneaux : le puits est profond.', win: (w) => w.pressed('keyhole'),
+      demo: fish(D(), 202, 470, 660, 1035).end() },
+    { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 1200, h: 310 }, solids: wellSolids(320),
+      bodies: rings([860, 930], 'rR').concat(rings([380, 450], 'rL'), [{ id: 'key', kind: 'key', x: 633, y: 710 }]),
+      sensors: [{ id: 'keyhole', type: 'keyhole', body: 'key', x: 150, y: 260, w: 150, h: 150 }], cage: { x: 100, y: 250 }, witch: { x: 300, y: 270 }, well: { x: 600, y: 420, w: 120, h: 320 },
+      hint: 'Les anneaux sont des deux côtés du puits. Ramasse-les tous, la serrure est à gauche.', win: (w) => w.pressed('keyhole'),
+      demo: D().down(882, 366).wait(0.3).move(882, 230, 0.5).move(1000, 230, 1.5).move(430, 230, 3).move(520, 230, 1.5).wait(0.4).move(660, 230, 1.2).move(660, 412, 2).wait(1.5).move(660, 150, 2).move(225, 150, 2.5).wait(1.2).end() },
+  ] });
+
+  // 9 ------------------------------------------------------------ Le bouclier
+  const plates = (slitY, slitH) => [{ id: 'plateTop', x: 640, y: 110, w: 22, h: slitY - 110, mat: 'iron' }, { id: 'plateBot', x: 640, y: slitY + slitH, w: 22, h: 720 - slitY - slitH, mat: 'iron' }];
+  const shieldRoom = (slitY, slitH, boltY) => ({ tools: bar, zone: { x: 40, y: 110, w: 600, h: 610 }, solids: room().concat(plates(slitY, slitH)),
+    bodies: [{ id: 'bolt', kind: 'bolt', x: 780, y: boltY, rail: { axis: 'x', min: 680, max: 780 } }], sensors: [latchAt('l', 'bolt', 660, boltY - 8, 90, undefined)], win: (w) => w.latched('bolt') });
+  F.push({ n: 9, title: 'Le bouclier', taunt: 'Une plaque de fer, et ton aimant ne passe plus !', rooms: [
+    Object.assign(shieldRoom(380, 60, 400), { kind: 'atelier', hint: 'Le fer bloque l’aimant. Mets ta main en face de la fente.', demo: D().down(610, 250).wait(1.5).move(610, 410, 1).wait(3).end() }),
+    Object.assign(shieldRoom(380, 60, 400), { kind: 'salle', cage: { x: 1040, y: 540 }, witch: { x: 1120, y: 380 }, hint: 'Le fer bloque l’aimant. Trouve la fente dans la plaque.', demo: D().down(610, 410).wait(3).end() }),
+    Object.assign(shieldRoom(480, 80, 400), { kind: 'salle', cage: { x: 1040, y: 540 }, witch: { x: 1120, y: 380 }, hint: 'La fente n’est pas en face du verrou. Colle ta main à la plaque, au niveau de la fente.', demo: D().down(632, 545).wait(3).end() }),
+  ] });
+
+  // 10 ----------------------------------------------------------- Le clou aimanté
+  const nailRoom = (doors, bolts, win) => ({ tools: [{ type: 'nail' }], lodestone: { x: 90, y: 540, w: 230, h: 180 }, solids: room().concat(doors), bodies: bolts, sensors: bolts.map((b) => latchAt('l' + b.id, b.id, b.x - 10, 282, 110, 290)), win });
+  const nb = (id, x) => ({ id, kind: 'bolt', x, y: 420, mass: 0.5, rail: { axis: 'y', min: 290, max: 420 } });
+  F.push({ n: 10, title: 'Le clou aimanté', taunt: 'Je t’ai pris ton aimant ! Ha ha !', rooms: [
+    Object.assign(nailRoom([Object.assign(door(520), { id: 'door' })], [nb('bolt', 510)], (w) => w.latched('bolt')),
+      { kind: 'atelier', hint: 'Frotte le clou sur la pierre noire, puis vite au verrou !', demo: D().down(130, 600).rub(10).move(440, 300, 1).wait(3).end() }),
+    Object.assign(nailRoom([door(700)], [nb('bolt', 690)], (w) => w.latched('bolt')),
+      { kind: 'salle', cage: { x: 1040, y: 540 }, witch: { x: 900, y: 560 }, hint: 'Frotte le clou sur la pierre noire. Il devient aimant… pour un moment !',
+        demo: D().down(130, 600).rub(12).move(620, 300, 1).wait(3).end() }),
+    Object.assign(nailRoom([door(640), Object.assign(door(960), { id: 'door2' })], [nb('bA', 630), nb('bB', 950)], (w) => w.latched('bA') && w.latched('bB')),
+      { kind: 'salle', cage: { x: 1100, y: 540 }, witch: { x: 1040, y: 400 }, hint: 'Deux verrous, et le clou faiblit. Refrotte s’il le faut.',
+        demo: D().down(130, 600).rub(12).move(560, 300, 1).wait(2.5).move(880, 300, 1).wait(3).end() }),
+  ] });
+
+  // 11 ----------------------------------------------------------- L'électroaimant
+  const craneRoom = (extra, bodies, btnX, win, crane = { x: 300, y: 250 }) => ({ tools: [{ type: 'electro' }], crane, craneZone: { x: 80, y: 130, w: 1120, h: 470 }, solids: room().concat(extra), bodies,
+    sensors: [{ id: 'btn', type: 'button', x: btnX, y: 700, w: 160, h: 20, minMass: 4, sticky: true }], win });
+  F.push({ n: 11, title: "L'électroaimant", taunt: 'Un bouton ? Il faut quelque chose de lourd !', rooms: [
+    Object.assign(craneRoom([], [{ id: 'k', kind: 'knight', x: 200, y: KY }], 880, (w) => w.pressed('btn')),
+      { kind: 'atelier', hint: 'Allume, soulève le chevalier, va au-dessus du bouton, éteins.', demo: D().electro().down(300, 580).wait(2).move(960, 560, 2).up().electro().wait(3).end() }),
+    Object.assign(craneRoom([], [{ id: 'k', kind: 'knight', x: 1000, y: KY }], 240, (w) => w.pressed('btn'), { x: 900, y: 250 }),
+      { kind: 'salle', cage: { x: 1060, y: 540 }, witch: { x: 1130, y: 380 }, hint: 'Allume l’électroaimant, soulève le chevalier, et éteins-le au-dessus du bouton.',
+        demo: D().electro().down(1000, 580).wait(2).move(320, 560, 2.5).up().electro().wait(3).end() }),
+    Object.assign(craneRoom([{ id: 'wall', x: 600, y: 400, w: 40, h: 320, mat: 'stone' }], [{ id: 'k', kind: 'knight', x: 200, y: KY }], 880, (w) => w.pressed('btn')),
+      { kind: 'salle', cage: { x: 1060, y: 540 }, witch: { x: 1130, y: 380 }, hint: 'Un mur. Monte haut avant de passer de l’autre côté.',
+        demo: D().electro().down(300, 580).wait(2).move(300, 180, 1.5).move(960, 180, 2.5).move(960, 560, 1.5).up().electro().wait(3).end() }),
+  ] });
+
+  // 12 ----------------------------------------------------------- La bobine
+  const coilRoom = (bodies, sensors, win, crane = { x: 400, y: 250 }) => ({ tools: [{ type: 'electro' }], turns: 1, turnsNeeded: 4, crane, craneZone: { x: 80, y: 130, w: 1120, h: 470 }, solids: room(), bodies, sensors, win });
+  const herse5 = (id, x, mass = 5) => ({ id, kind: 'herse', x, y: 570, mass, rail: { axis: 'y', min: 360, max: 570 } });
+  F.push({ n: 12, title: 'La bobine', taunt: 'Ton électroaimant est tout faible !', rooms: [
+    Object.assign(coilRoom([herse5('herse', 880)], [latchAt('latch', 'herse', 880, 420, 180, 360)], (w) => w.latched('herse')),
+      { kind: 'atelier', hint: 'Trop faible ? Ajoute des tours de fil, puis réessaie.', demo: D().electro().down(970, 560).wait(1.5).turn().turn().turn().wait(0.6).move(970, 330, 2).wait(1).end() }),
+    Object.assign(coilRoom([herse5('herse', 880), { id: 'k', kind: 'knight', x: 200, y: KY }], [latchAt('latch', 'herse', 880, 420, 180, 360), { id: 'btn', type: 'button', x: 480, y: 700, w: 160, h: 20, minMass: 4, sticky: true }], (w) => w.latched('herse') && w.pressed('btn')),
+      { kind: 'salle', cage: { x: 900, y: 540 }, witch: { x: 1110, y: 560 }, hint: 'Plus la bobine a de tours de fil, plus l’électroaimant est fort. Ajoute des tours.',
+        demo: D().electro().turn().turn().turn().down(970, 560).wait(0.8).move(970, 330, 2).wait(0.5).up().down(300, 580).wait(2).move(560, 560, 1.5).up().electro().wait(3).end() }),
+    Object.assign(coilRoom([herse5('hA', 300, 3), herse5('hB', 880, 9)], [latchAt('lA', 'hA', 300, 420, 180, 360), latchAt('lB', 'hB', 880, 420, 180, 360)], (w) => w.latched('hA') && w.latched('hB')),
+      { kind: 'salle', cage: { x: 900, y: 540 }, witch: { x: 1110, y: 560 }, hint: 'Une herse légère, une herse très lourde. Encore plus de tours pour la seconde.',
+        demo: D().electro().turn().turn().down(390, 560).wait(0.8).move(390, 330, 2).wait(0.4).up().turn().turn().turn().turn().down(970, 560).wait(0.8).move(970, 330, 2).wait(1).end() }),
+  ] });
+
+  // 13 ----------------------------------------------------------- La boussole
+  const darkRoom = (tx, ty, leverX) => ({ tools: [{ type: 'compass' }], dark: true, compassTarget: { x: tx, y: ty }, solids: room(),
+    bodies: [{ id: 'lever', kind: 'lever', x: leverX, y: ty - 50, hidden: true, rail: { axis: 'y', min: ty - 50, max: ty + 60 } }],
+    sensors: [{ id: 'secret', type: 'secret', x: tx - 60, y: ty - 60, w: 120, h: 120, reveals: ['lever'] }], win: (w) => w.railAtMax('lever') });
+  F.push({ n: 13, title: 'La boussole', taunt: 'Dans le noir, tu ne trouveras jamais !', rooms: [
+    Object.assign(darkRoom(400, 300, 385), { kind: 'atelier', hint: 'Suis l’aiguille, tape sur le mur, puis baisse le levier.',
+      demo: D().down(900, 500).move(450, 320, 2.5).up().tap(400, 300).wait(0.5).down(400, 300).move(400, 450, 1.2).up().wait(1).end() }),
+    Object.assign(darkRoom(985, 400, 970), { kind: 'salle', cage: { x: 1060, y: 540 }, witch: { x: 760, y: 560 }, hint: 'L’aiguille montre l’aimant caché. Tape sur le mur à cet endroit, puis baisse le levier.',
+      demo: D().down(300, 500).move(950, 420, 2.5).up().tap(985, 400).wait(0.5).down(985, 400).move(985, 550, 1.2).up().wait(1).end() }),
+    Object.assign(darkRoom(300, 560, 285), { kind: 'salle', cage: { x: 1060, y: 540 }, witch: { x: 760, y: 560 }, hint: 'Nouvelle cachette. La boussole sait.',
+      demo: D().down(900, 300).move(330, 540, 2.5).up().tap(300, 560).wait(0.5).down(300, 560).move(300, 700, 1.2).up().wait(1).end() }),
+  ] });
+
+  // 14 ----------------------------------------------------------- Le pôle caché
+  const hiddenRoom = (mirror, fixed) => Object.assign(polesRoom(mirror ? 620 : 560, fixed || 'N', mirror), { filingsButton: true });
+  const hr = (mirror, fixed) => { const r = hiddenRoom(mirror, fixed); r.bodies[0].hiddenPole = true; if (!fixed) r.bodies[0].randomPole = true; return r; };
+  F.push({ n: 14, title: 'Le pôle caché', taunt: 'J’ai peint son aimant. Devine les pôles !', rooms: [
+    Object.assign(hr(false, 'S'), { kind: 'atelier', hint: 'Appuie sur Limaille : les lignes montrent les pôles cachés.', demo: D().filings().wait(1).down(480, 560).wait(2.5).flip().wait(4).end() }),
+    Object.assign(hr(false), { kind: 'salle', cage: { x: 1060, y: 540 }, witch: { x: 1130, y: 380 }, hint: 'La limaille de fer dessine les lignes invisibles. Regarde, puis choisis le bon côté.', demo: D().filings().down(480, 560).wait(2.5).flip().wait(4).end() }),
+    Object.assign(hr(true), { kind: 'salle', cage: { x: 100, y: 540 }, witch: { x: 240, y: 560 }, hint: 'De l’autre côté, et les pôles sont encore cachés.', demo: D().filings().down(800, 560).wait(2.5).flip().wait(4).end() }),
+  ] });
+
+  // 15 ----------------------------------------------------------- Tout ensemble
+  F.push({ n: 15, title: 'Tout ensemble', taunt: 'Trois pièges d’un coup. Bonne chance !', rooms: [
+    { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 1200, h: 310 },
+      solids: wellSolids(320).concat([{ id: 'trapdoor', x: 600, y: 420, w: 120, h: 22, mat: 'wood' }]),
+      bodies: [{ id: 'k', kind: 'knight', x: 120, y: 420 - 110 }].concat(rings([800, 870, 940, 1010]), [{ id: 'key', kind: 'key', x: 633, y: 710 }]),
+      sensors: [{ id: 'btn', type: 'button', x: 380, y: 400, w: 150, h: 20, minMass: 4, sticky: true, removes: 'trapdoor' }, { id: 'keyhole', type: 'keyhole', body: 'key', x: 1010, y: 250, w: 150, h: 150 }],
+      cage: { x: 1090, y: 250 }, witch: { x: 760, y: 270 }, well: { x: 600, y: 420, w: 120, h: 320 },
+      hint: 'Le chevalier sur le bouton ouvre la trappe. Puis la chaîne va chercher la clé.', win: (w) => w.pressed('keyhole'),
+      demo: fish(D().down(300, 360).move(560, 360, 3).wait(2).up(), 822, 1090, 660, 1085).end() },
+    { kind: 'salle', tools: bar, zone: { x: 40, y: 110, w: 720, h: 610 }, solids: room().concat(niche(400), [{ id: 'plateTop', x: 760, y: 110, w: 22, h: 270, mat: 'iron' }, { id: 'plateBot', x: 760, y: 440, w: 22, h: 280, mat: 'iron' }]),
+      bodies: [{ id: 'k', kind: 'knight', x: 400, y: KY }, { id: 'sword', kind: 'sword', x: 150, y: 250 }, { id: 'bolt', kind: 'bolt', x: 900, y: 400, rail: { axis: 'x', min: 800, max: 900 } }],
+      sensors: [latchAt('l', 'bolt', 780, 392, 110, undefined)], cage: { x: 1060, y: 540 }, witch: { x: 1130, y: 380 },
+      hint: 'L’épée sur le chevalier, puis le verrou derrière la plaque de fer.', win: (w) => w.ko('k') && w.latched('bolt'),
+      demo: D().down(163, 240).wait(0.4).move(413, 300, 1.5).up().wait(2.5).down(735, 410).wait(3).end() },
+  ] });
+
+  // 16 ----------------------------------------------------------- Le sommet
+  F.push({ n: 16, title: 'Le sommet', taunt: 'Mon aimant géant tient la cage. Tu ne l’ouvriras jamais !', final: true, rooms: [
+    { kind: 'salle', tools: [{ type: 'horseshoe' }], canFlip: true, final: true, solids: room(),
+      bodies: [
+        { id: 'giant', kind: 'giant', x: 560, y: 260, pole: 'S', rail: { axis: 'x', min: 300, max: 1300, flingAt: 700 } },
+        { id: 'porte', kind: 'herse', x: 900, y: 570, mass: 3, rail: { axis: 'y', min: 360, max: 570 }, lockedUntil: (w) => w.railAtMax('giant') },
+      ],
+      sensors: [latchAt('latch', 'porte', 900, 420, 180, 360)], cage: { x: 920, y: 540 }, witch: { x: 600, y: 120, rides: 'giant' },
+      hint: 'Retourne ton aimant pour repousser l’aimant géant. Puis soulève la porte de la cage.', win: (w) => w.latched('porte'),
+      demo: D().down(500, 292).wait(2).flip().wait(4).up().down(990, 560).wait(0.6).move(990, 330, 2).wait(1).end() },
+  ] });
+
+  // Propage n/title/taunt/final dans chaque salle
+  for (const f of F) f.rooms.forEach((r, i) => { r.n = f.n; r.floorTitle = f.title; r.taunt = f.taunt; r.index = i; r.total = f.rooms.length; if (f.final) r.final = true; });
+
+  const out = F;
+  if (typeof module !== 'undefined' && module.exports) module.exports = out; else root.FLOORS = out;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+/* Fiches de lecture (niveau CP) : phrases courtes + petit schéma SVG par étage. */
+(function (root) {
+  'use strict';
+  const R = '#e0453a', B = '#2f6fd6', G = '#8a8f98', K = '#2b2b2b';
+  const magnet = (x, y, w, h, flip) => `<g transform="translate(${x},${y})">
+    <rect x="0" y="0" width="${w / 2}" height="${h}" rx="6" fill="${flip ? R : B}"/><rect x="${w / 2}" y="0" width="${w / 2}" height="${h}" rx="6" fill="${flip ? B : R}"/>
+    <text x="${w / 4}" y="${h / 2 + 8}" text-anchor="middle" font-size="22" font-weight="700" fill="#fff">${flip ? 'N' : 'S'}</text>
+    <text x="${3 * w / 4}" y="${h / 2 + 8}" text-anchor="middle" font-size="22" font-weight="700" fill="#fff">${flip ? 'S' : 'N'}</text></g>`;
+  const knight = (x, y) => `<g transform="translate(${x},${y})"><rect x="0" y="0" width="40" height="64" rx="8" fill="${G}"/><rect x="6" y="8" width="28" height="18" rx="6" fill="#cfd3d9"/><rect x="10" y="30" width="20" height="26" fill="#b4b9c1"/></g>`;
+  const arrow = (x1, y1, x2, y2, c = K) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c}" stroke-width="5" stroke-linecap="round"/><polygon points="${x2},${y2} ${x2 - 14 * Math.sign(x2 - x1 || 1)},${y2 - 9} ${x2 - 14 * Math.sign(x2 - x1 || 1)},${y2 + 9}" fill="${c}" transform="${x1 === x2 ? `rotate(${y2 > y1 ? 90 : -90} ${x2} ${y2})` : ''}"/>`;
+  const nail = (x, y, c = G) => `<g transform="translate(${x},${y})"><rect x="0" y="0" width="8" height="40" fill="${c}"/><rect x="-5" y="-6" width="18" height="8" rx="3" fill="${c}"/></g>`;
+  const svg = (inner) => `<svg viewBox="0 0 420 200" xmlns="http://www.w3.org/2000/svg" role="img">${inner}</svg>`;
+
+  const CARDS = [
+    { title: "L'aimant", lines: ["L'aimant attire le fer.", 'Le chevalier est en fer.', "Il glisse vers l'aimant."],
+      svg: svg(`${knight(60, 90)}${arrow(130, 122, 250, 122)}${magnet(270, 102, 110, 40)}`) },
+    { title: 'Attire ou pas', lines: ["L'aimant attire le fer.", 'Il n’attire pas la paille,', 'ni le bois, ni le chat.'],
+      svg: svg(`${magnet(150, 20, 120, 40)}${nail(120, 100)}<text x="124" y="170" font-size="34" fill="#2a9d4a">✓</text>
+        <rect x="200" y="100" width="30" height="44" fill="#d8b24a"/><text x="200" y="175" font-size="34" fill="${R}">✗</text>
+        <rect x="280" y="100" width="34" height="44" fill="#a0632a"/><text x="282" y="175" font-size="34" fill="${R}">✗</text>`) },
+    { title: 'La serrure', lines: ["L'aimant agit à travers le bois,", 'le verre et le carton.', "Il n'a pas besoin de toucher."],
+      svg: svg(`<rect x="200" y="30" width="22" height="140" fill="#a0632a"/><line x1="211" y1="40" x2="211" y2="160" stroke="#7a4a1e" stroke-width="3" stroke-dasharray="8 6"/>
+        ${magnet(60, 80, 110, 40)}${nail(290, 80)}<path d="M170 100 Q200 80 290 100" stroke="${B}" stroke-width="3" fill="none" stroke-dasharray="6 6"/>`) },
+    { title: "L'épée", lines: ["L'aimant soulève l'épée.", "Si on enlève l'aimant,", "l'épée tombe !"],
+      svg: svg(`${magnet(40, 20, 100, 36)}<rect x="84" y="56" width="12" height="90" fill="#cfd3d9"/><rect x="72" y="56" width="36" height="8" fill="#c9a227"/>
+        <text x="190" y="110" font-size="40">→</text>
+        <rect x="300" y="60" width="12" height="90" fill="#cfd3d9"/><rect x="288" y="60" width="36" height="8" fill="#c9a227"/>${arrow(350, 60, 350, 150)}`) },
+    { title: 'Les pôles', lines: ['Un aimant a deux bouts :', 'le pôle Nord et le pôle Sud.', 'Nord et Sud se collent.', 'Nord et Nord se repoussent.'],
+      svg: svg(`${magnet(30, 30, 110, 40)}${magnet(200, 30, 110, 40)}${arrow(145, 50, 165, 50)}${arrow(195, 50, 175, 50)}
+        ${magnet(30, 120, 110, 40)}${magnet(240, 120, 110, 40, true)}${arrow(170, 140, 150, 140)}${arrow(210, 140, 230, 140)}`) },
+    { title: 'La portée', lines: ["Près de l'aimant, ça tire fort.", "Loin de l'aimant, ça tire peu.", 'Très loin, ça ne tire plus.'],
+      svg: svg(`<circle cx="80" cy="100" r="80" fill="none" stroke="${B}" stroke-dasharray="6 6"/><circle cx="80" cy="100" r="130" fill="none" stroke="${B}" stroke-dasharray="4 8" opacity=".5"/>
+        ${magnet(30, 82, 100, 36)}${nail(180, 80)}${arrow(176, 100, 150, 100)}${nail(270, 80)}<line x1="266" y1="100" x2="250" y2="100" stroke="${K}" stroke-width="3"/>${nail(370, 80)}`) },
+    { title: 'Le fer à cheval', lines: ['Un aimant tire surtout par ses bouts.', 'Le fer à cheval met ses deux bouts', 'au même endroit : il tire plus fort.'],
+      svg: svg(`<path d="M150 30 a60 60 0 0 1 120 0 v50 h-30 v-50 a30 30 0 0 0 -60 0 v50 h-30 z" fill="${R}"/><rect x="150" y="80" width="30" height="30" fill="${B}"/><rect x="240" y="80" width="30" height="30" fill="${R}"/>
+        <text x="165" y="102" text-anchor="middle" font-size="18" fill="#fff" font-weight="700">S</text><text x="255" y="102" text-anchor="middle" font-size="18" fill="#fff" font-weight="700">N</text>
+        <rect x="140" y="125" width="140" height="50" rx="8" fill="${G}"/><text x="210" y="158" text-anchor="middle" font-size="20" fill="#fff">lourd</text>`) },
+    { title: 'La chaîne', lines: ["Un anneau collé à l'aimant", 'devient un petit aimant.', "Il attire l'anneau suivant.", 'On fait une chaîne !'],
+      svg: svg(`${magnet(160, 10, 100, 34)}<circle cx="210" cy="62" r="16" fill="none" stroke="${G}" stroke-width="8"/><circle cx="210" cy="96" r="16" fill="none" stroke="${G}" stroke-width="8"/><circle cx="210" cy="130" r="16" fill="none" stroke="${G}" stroke-width="8"/>
+        <rect x="196" y="150" width="28" height="36" rx="6" fill="#c9a227"/>`) },
+    { title: 'Le bouclier', lines: ["L'aimant passe à travers le bois.", 'Mais pas à travers le fer.', 'Une plaque de fer fait un bouclier.'],
+      svg: svg(`${magnet(20, 80, 100, 36)}<rect x="180" y="20" width="18" height="70" fill="#a0632a"/><rect x="180" y="110" width="18" height="70" fill="#555b66"/>
+        <path d="M120 60 Q180 50 260 55" stroke="${B}" stroke-width="3" fill="none" stroke-dasharray="6 6"/>${nail(270, 35)}
+        <path d="M120 140 L178 145" stroke="${B}" stroke-width="3" fill="none" stroke-dasharray="6 6"/><text x="200" y="160" font-size="34" fill="${R}">✗</text>${nail(270, 125)}`) },
+    { title: 'Le clou aimanté', lines: ['Frotte un clou sur un aimant.', 'Le clou devient un aimant !', 'Mais pas pour longtemps.'],
+      svg: svg(`<ellipse cx="90" cy="120" rx="70" ry="45" fill="#3a3a3a"/>${nail(70, 50, '#999')}${arrow(120, 60, 160, 60)}${arrow(60, 60, 20, 60)}
+        ${nail(290, 70, '#999')}<circle cx="294" cy="138" r="12" fill="none" stroke="${G}" stroke-width="6"/>${arrow(320, 160, 300, 140)}
+        <circle cx="380" cy="60" r="24" fill="none" stroke="${K}" stroke-width="4"/><line x1="380" y1="60" x2="380" y2="42" stroke="${K}" stroke-width="4"/><line x1="380" y1="60" x2="394" y2="60" stroke="${K}" stroke-width="4"/>`) },
+    { title: "L'électroaimant", lines: ['Du courant dans un fil enroulé', 'fait un aimant.', "On l'allume. On l'éteint.", "C'est un électroaimant."],
+      svg: svg(`<rect x="30" y="70" width="60" height="30" rx="4" fill="#333"/><rect x="90" y="78" width="8" height="14" fill="#333"/><text x="60" y="92" text-anchor="middle" font-size="16" fill="#fff">pile</text>
+        <path d="M60 70 V30 H160 M60 100 V140 H160" stroke="${K}" stroke-width="4" fill="none"/>
+        <rect x="160" y="70" width="140" height="30" rx="4" fill="${G}"/>
+        <path d="M160 30 c10 0 10 10 0 10 c-10 0 -10 -10 0 -10 m22 0 c10 0 10 10 0 10 c-10 0 -10 -10 0 -10 m22 0 c10 0 10 10 0 10 c-10 0 -10 -10 0 -10 m22 0 c10 0 10 10 0 10 c-10 0 -10 -10 0 -10 m22 0 c10 0 10 10 0 10 c-10 0 -10 -10 0 -10 m22 0 c10 0 10 10 0 10 c-10 0 -10 -10 0 -10" stroke="#d96b2b" stroke-width="4" fill="none" transform="translate(0,40)"/>
+        <path d="M160 140 H300 M300 140 V100 M300 60 V30 H160" stroke="#d96b2b" stroke-width="4" fill="none"/>
+        <line x1="300" y1="140" x2="330" y2="115" stroke="${K}" stroke-width="5"/><circle cx="300" cy="140" r="6" fill="${K}"/><circle cx="340" cy="140" r="6" fill="${K}"/><text x="320" y="175" text-anchor="middle" font-size="16">ON / OFF</text>
+        ${nail(230, 110, '#777')}`) },
+    { title: 'La bobine', lines: ['Plus il y a de tours de fil,', "plus l'électroaimant est fort."],
+      svg: svg(`<rect x="40" y="60" width="120" height="26" rx="4" fill="${G}"/><path d="M60 55 c8 0 8 36 0 36 m20 -36 c8 0 8 36 0 36" stroke="#d96b2b" stroke-width="4" fill="none"/>${nail(90, 100, '#aaa')}<text x="100" y="170" text-anchor="middle" font-size="18">2 tours</text>
+        <rect x="240" y="60" width="140" height="26" rx="4" fill="${G}"/><path d="M250 55 c8 0 8 36 0 36 m18 -36 c8 0 8 36 0 36 m18 -36 c8 0 8 36 0 36 m18 -36 c8 0 8 36 0 36 m18 -36 c8 0 8 36 0 36 m18 -36 c8 0 8 36 0 36 m18 -36 c8 0 8 36 0 36" stroke="#d96b2b" stroke-width="4" fill="none"/>${nail(280, 100, '#777')}${nail(305, 100, '#777')}${nail(330, 100, '#777')}<text x="310" y="170" text-anchor="middle" font-size="18">7 tours</text>`) },
+    { title: 'La boussole', lines: ['La Terre est un gros aimant.', "L'aiguille de la boussole", 'est un petit aimant.', 'Elle montre le Nord.'],
+      svg: svg(`<circle cx="110" cy="100" r="80" fill="#5aa0e0"/><ellipse cx="90" cy="90" rx="30" ry="22" fill="#5ab35a"/><ellipse cx="135" cy="130" rx="22" ry="16" fill="#5ab35a"/>
+        <text x="110" y="35" text-anchor="middle" font-size="18" font-weight="700" fill="${R}">N</text><text x="110" y="190" text-anchor="middle" font-size="18" font-weight="700" fill="${B}">S</text>
+        <circle cx="300" cy="100" r="60" fill="#fff" stroke="${K}" stroke-width="4"/><polygon points="300,50 290,100 310,100" fill="${R}"/><polygon points="300,150 290,100 310,100" fill="${B}"/><circle cx="300" cy="100" r="6" fill="${K}"/>
+        <text x="300" y="38" text-anchor="middle" font-size="16" font-weight="700">N</text>`) },
+    { title: 'Le pôle caché', lines: ["On ne voit pas la force de l'aimant.", 'La limaille de fer la dessine.', 'On voit des lignes entre les pôles.'],
+      svg: svg(`${magnet(155, 85, 110, 30)}<g fill="none" stroke="#555" stroke-width="2">
+        <path d="M265 100 C330 60 330 140 265 100"/><path d="M155 100 C90 60 90 140 155 100"/><path d="M265 90 C360 20 60 20 155 90"/><path d="M265 110 C360 180 60 180 155 110"/><path d="M265 85 C400 -10 20 -10 155 85"/><path d="M265 115 C400 210 20 210 155 115"/></g>`) },
+    { title: 'Tout ensemble', lines: ['Tu sais tout !', 'Le fer, les pôles, la chaîne,', 'la plaque, le bouton.', 'À toi de jouer.'],
+      svg: svg(`${magnet(20, 80, 90, 34)}${knight(140, 70)}<circle cx="230" cy="100" r="16" fill="none" stroke="${G}" stroke-width="8"/><circle cx="230" cy="134" r="16" fill="none" stroke="${G}" stroke-width="8"/>
+        <rect x="280" y="60" width="16" height="90" fill="#555b66"/><rect x="330" y="120" width="60" height="20" rx="4" fill="#444"/><ellipse cx="360" cy="120" rx="22" ry="10" fill="${R}"/>`) },
+    { title: 'Le sommet', lines: ['Les mêmes pôles se repoussent.', 'Même un aimant géant !', 'Retourne ton aimant, et pousse.'],
+      svg: svg(`${magnet(20, 90, 80, 30, true)}${magnet(180, 70, 200, 70)}${arrow(100, 105, 125, 105)}${arrow(175, 105, 160, 105)}`) },
+  ];
+
+  const INTRO = {
+    lines: ['Une sorcière maligne a pris le chat.', 'Elle l’a caché tout en haut de sa tour.', 'Seize étages !', 'Toi, tu as un aimant.'],
+  };
+
+  const out = { CARDS, INTRO };
+  if (typeof module !== 'undefined' && module.exports) module.exports = out; else root.CARDS_DATA = out;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+/* Rendu canvas, interface, enchaînement des écrans, démos et juice. */
+(function () {
+  'use strict';
+  const { World, Replay, W, H } = window.Engine;
+  const FLOORS = window.FLOORS;
+  const { CARDS, INTRO } = window.CARDS_DATA;
+  const $ = (s) => document.querySelector(s);
+  const fr = (t) => t.replace(/ ([!?:;])/g, ' $1');
+  const TOTAL = FLOORS.length;
+  const IMG = {};
+  const ASSETS = ['armure', 'armure_tas', 'epouvantail', 'epee', 'sorciere', 'sorciere_balai', 'sorciere_vol', 'chat_cage', 'chat_saute', 'chat_assis', 'magnetite'];
+  const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---------- progression ----------
+  const KEY = 'tour-aimants-v2';
+  let progress = { floor: 1, room: 0, done: [] };
+  try { const p = JSON.parse(localStorage.getItem(KEY) || 'null'); if (p && p.floor) progress = Object.assign({ room: 0, done: [] }, p); } catch (e) { /* stockage indisponible */ }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(progress)); } catch (e) { /* ignore */ } }
+
+  // ---------- audio ----------
+  let actx = null;
+  function ac() { try { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); return actx; } catch (e) { return null; } }
+  function tone(freq, dur, type = 'square', vol = 0.08, slide = 0, delay = 0) {
+    const a = ac(); if (!a) return;
+    try {
+      const o = a.createOscillator(), g = a.createGain(); const t0 = a.currentTime + delay;
+      o.type = type; o.frequency.setValueAtTime(freq, t0);
+      if (slide) o.frequency.linearRampToValueAtTime(Math.max(30, freq + slide), t0 + dur);
+      g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(g); g.connect(a.destination); o.start(t0); o.stop(t0 + dur);
+    } catch (e) { /* audio indisponible */ }
+  }
+  let noiseBuf = null;
+  function noise(dur, vol = 0.06, freq = 800, delay = 0) {
+    const a = ac(); if (!a) return;
+    try {
+      if (!noiseBuf) { noiseBuf = a.createBuffer(1, a.sampleRate, a.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+      const src = a.createBufferSource(); src.buffer = noiseBuf;
+      const f = a.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = 0.8;
+      const g = a.createGain(); const t0 = a.currentTime + delay;
+      g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      src.connect(f); f.connect(g); g.connect(a.destination); src.start(t0); src.stop(t0 + dur);
+    } catch (e) { /* ignore */ }
+  }
+  const SFX = {
+    attach: () => { tone(880, 0.07, 'square', 0.05); tone(1320, 0.07, 'square', 0.04, 0, 0.05); },
+    detach: () => tone(440, 0.12, 'triangle', 0.05, -200),
+    captured: () => { tone(600, 0.45, 'sawtooth', 0.06, -480); noise(0.3, 0.05, 400, 0.3); },
+    ko: () => { tone(140, 0.25, 'square', 0.09, -80); noise(0.25, 0.08, 300); },
+    button: () => { tone(520, 0.1, 'square', 0.06); tone(780, 0.12, 'square', 0.05, 0, 0.09); },
+    latch: () => { tone(300, 0.06, 'square', 0.08); tone(220, 0.1, 'square', 0.07, 0, 0.06); },
+    land: () => noise(0.12, 0.05, 250),
+    secret: () => { tone(300, 0.3, 'sawtooth', 0.06, 200); noise(0.5, 0.06, 200); },
+    win: () => { [523, 659, 784, 1046].forEach((f, i) => tone(f, 0.22, 'triangle', 0.1, 0, i * 0.12)); noise(0.6, 0.04, 2000, 0.3); },
+    room: () => { tone(659, 0.12, 'triangle', 0.08); tone(880, 0.2, 'triangle', 0.08, 0, 0.12); },
+    whoosh: () => noise(1.2, 0.08, 600),
+    flip: () => tone(700, 0.06, 'triangle', 0.05),
+    turn: (n) => tone(500 + n * 60, 0.08, 'triangle', 0.05),
+    on: (on) => tone(on ? 900 : 300, 0.12, 'square', 0.06),
+    meow: () => { tone(700, 0.18, 'sine', 0.09, 200); tone(900, 0.25, 'sine', 0.09, -300, 0.18); },
+  };
+  function buzz(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) { /* ignore */ } }
+  function speak(text, opts = {}) {
+    try {
+      if (!window.speechSynthesis) return;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'fr-FR'; u.rate = opts.rate || 0.9; u.pitch = opts.pitch || 1;
+      const voices = window.speechSynthesis.getVoices().filter((v) => v.lang && v.lang.startsWith('fr'));
+      if (voices.length) u.voice = voices[0];
+      window.speechSynthesis.speak(u);
+    } catch (e) { /* synthèse vocale indisponible */ }
+  }
+
+  // ---------- écrans ----------
+  const screens = ['title', 'tower', 'card', 'game', 'end'];
+  let current = 'title';
+  function show(name) {
+    if (name !== current) pushScreen(name);
+    current = name;
+    for (const s of screens) { const el = $('#' + s); const was = !el.hidden; el.hidden = s !== name; if (s === name && !was) { el.classList.remove('in'); void el.offsetWidth; el.classList.add('in'); } }
+    if (name !== 'game') stopLoop();
+  }
+
+  // ---------- titre ----------
+  // ---------- plein écran, installation, bouton retour ----------
+  const docEl = document.documentElement;
+  const STANDALONE = (window.matchMedia && (window.matchMedia('(display-mode: standalone)').matches || window.matchMedia('(display-mode: fullscreen)').matches)) || window.navigator.standalone === true;
+  const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const canFullscreen = !!(docEl.requestFullscreen || docEl.webkitRequestFullscreen);
+  function isFullscreen() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+  function toggleFullscreen() {
+    try {
+      if (isFullscreen()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+      const p = (docEl.requestFullscreen || docEl.webkitRequestFullscreen).call(docEl, { navigationUI: 'hide' });
+      if (p && p.then) p.then(lockLandscape).catch(() => {});
+      else lockLandscape();
+    } catch (e) { /* plein écran refusé */ }
+  }
+  function updateFullscreenButtons() {
+    const on = isFullscreen();
+    for (const id of ['#btnFull', '#btnFullHud']) {
+      const b = $(id); if (!b) continue;
+      b.hidden = STANDALONE || !canFullscreen;
+      if (id === '#btnFull') b.textContent = on ? '⛶ Quitter le plein écran' : '⛶ Plein écran';
+      else b.textContent = on ? '⛶' : '⛶';
+    }
+    setTimeout(layout, 60);
+  }
+  document.addEventListener('fullscreenchange', updateFullscreenButtons);
+  document.addEventListener('webkitfullscreenchange', updateFullscreenButtons);
+  let installPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; const b = $('#btnInstall'); if (b) b.hidden = STANDALONE; });
+  window.addEventListener('appinstalled', () => { installPrompt = null; $('#btnInstall').hidden = true; $('#iosHint').hidden = true; });
+  async function install() {
+    if (!installPrompt) return;
+    try { installPrompt.prompt(); await installPrompt.userChoice; } catch (e) { /* ignore */ }
+    installPrompt = null; $('#btnInstall').hidden = true;
+  }
+  // bouton Retour d'Android : revient à l'écran précédent au lieu de fermer l'appli
+  const BACK = { title: null, tower: 'title', card: 'tower', game: 'tower', end: 'title' };
+  let ignorePop = false;
+  function pushScreen(name) { if (name !== 'title' && history.pushState) { try { history.pushState({ screen: name }, ''); } catch (e) { /* ignore */ } } }
+  window.addEventListener('popstate', () => {
+    if (ignorePop) { ignorePop = false; return; }
+    const back = BACK[current];
+    if (back === 'tower') { show('tower'); renderTower(); }
+    else if (back === 'title') { show('title'); renderTitle(); }
+  });
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost') && !/claude\.ai$|claudeusercontent\.com$/.test(location.hostname)) {
+    window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(() => {}); });
+  }
+
+  function initTitle() {
+    $('#intro').innerHTML = INTRO.lines.map((l, i) => `<p style="animation-delay:${0.2 + i * 0.35}s">${fr(l)}</p>`).join('');
+    $('#btnFull').onclick = toggleFullscreen;
+    $('#btnFullHud').onclick = toggleFullscreen;
+    $('#btnInstall').onclick = install;
+    $('#iosHint').hidden = !(IOS && !STANDALONE && location.protocol === 'https:' && !/claude/.test(location.hostname));
+    updateFullscreenButtons();
+    $('#btnPlay').onclick = () => { unlockAudio(); show('tower'); renderTower(); };
+    $('#btnReset').onclick = () => { progress = { floor: 1, room: 0, done: [] }; save(); renderTitle(); };
+    $('#btnIntroRead').onclick = () => speak(INTRO.lines.join(' '));
+    renderTitle();
+  }
+  function renderTitle() {
+    $('#btnPlay').textContent = progress.done.length || progress.room ? `Continuer (étage ${progress.floor})` : 'Jouer';
+    $('#btnReset').hidden = !(progress.done.length || progress.room);
+  }
+  function unlockAudio() { const a = ac(); if (a && a.resume) a.resume(); lockLandscape(); }
+
+  // ---------- tour ----------
+  function renderTower() {
+    const list = $('#floors'); list.innerHTML = '';
+    for (let n = TOTAL; n >= 1; n--) {
+      const f = FLOORS[n - 1];
+      const done = progress.done.includes(n);
+      const cur = n === progress.floor;
+      const locked = !done && !cur;
+      const row = document.createElement('button');
+      row.className = 'floor' + (done ? ' done' : '') + (cur ? ' current' : '') + (locked ? ' locked' : '');
+      row.type = 'button'; row.disabled = locked;
+      const dots = f.rooms.map((r, i) => `<i class="${r.kind}${(done || (cur && i < progress.room)) ? ' ok' : ''}"></i>`).join('');
+      row.innerHTML = `<span class="num">${n}</span><span class="name">${locked ? '? ? ?' : f.title}<span class="dots">${dots}</span></span><span class="mark">${done ? '✓' : (cur ? '<img src="assets/chat_cage.png" alt="le chat">' : '')}</span>`;
+      row.onclick = () => openCard(n);
+      list.appendChild(row);
+    }
+    const cur = FLOORS[progress.floor - 1];
+    $('#towerText').textContent = progress.done.length ? fr(`La sorcière est montée à l'étage ${progress.floor} avec le chat !`) : fr('Le chat est au premier étage.');
+    const roomLabel = progress.room ? ` (${roomName(cur.rooms[progress.room])})` : '';
+    $('#btnClimb').textContent = `Monter à l'étage ${progress.floor}${roomLabel}`;
+    $('#btnClimb').onclick = () => openCard(progress.floor);
+    $('#btnHome').onclick = () => { show('title'); renderTitle(); };
+    requestAnimationFrame(() => { const c = list.querySelector('.current'); if (c) c.scrollIntoView({ block: 'center' }); });
+  }
+  function roomName(r) { return r.kind === 'atelier' ? 'Atelier' : `Salle ${r.index + 1 - (r.total === 3 ? 1 : 0)}`; }
+
+  // ---------- fiche ----------
+  function openCard(n) {
+    const c = CARDS[n - 1];
+    $('#cardFloor').textContent = `Étage ${n}`;
+    $('#cardTitle').textContent = c.title;
+    $('#cardText').innerHTML = c.lines.map((l, i) => `<p style="animation-delay:${0.15 + i * 0.3}s">${fr(l)}</p>`).join('');
+    $('#cardSvg').innerHTML = c.svg;
+    $('#btnRead').onclick = () => speak(c.lines.join(' '));
+    $('#btnGo').onclick = () => startRoom(n, n === progress.floor ? progress.room : 0);
+    $('#btnCardBack').onclick = () => { show('tower'); renderTower(); };
+    show('card');
+  }
+
+  // ---------- jeu ----------
+  const canvas = $('#canvas'), ctx = canvas.getContext('2d');
+  const app = $('#app');
+  let world = null, room = null, floor = null, raf = 0, lastT = 0, dpr = 1;
+  const L = { s: 1, rot: false, X: 0, Y: 0 };
+  let shake = 0, winAt = 0, idleT = 0, hintUntil = 0, hintCount = 0, flashes = [], particles = [], fx = {}, witchFx = { t: 0, text: '' };
+  let demo = null, demoMode = null, demoTimer = 0, bannerT = 0, bannerText = '', bannerSub = '', flashWhite = 0, roomClearT = 0;
+  let flight = null;   // { phase: 'in'|'hover'|'out', t, from, to, cageTaken }
+
+  function layout() {
+    const de = document.documentElement;
+    const gutter = 32;
+    const iw = Math.max(200, (window.innerWidth || de.clientWidth) - gutter), ih = Math.max(200, window.innerHeight || de.clientHeight);
+    const left = (window.innerWidth || de.clientWidth) - iw; // gouttières
+    const rot = ih > iw;             // tablette en portrait : on tourne toute la scène
+    const aw = rot ? ih : iw, ah = rot ? iw : ih;
+    const s = Math.min(aw / W, ah / H);
+    L.s = s; L.rot = rot;
+    if (!rot) { L.X = left / 2 + (iw - W * s) / 2; L.Y = (ih - H * s) / 2; app.style.transform = `translate(${L.X}px, ${L.Y}px) scale(${s})`; }
+    else { const ox = left / 2 + (iw - H * s) / 2, oy = (ih - W * s) / 2; L.X = ox + H * s; L.Y = oy; app.style.transform = `translate(${L.X}px, ${L.Y}px) rotate(90deg) scale(${s})`; }
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(W * s * dpr); canvas.height = Math.round(H * s * dpr);
+    ctx.setTransform(s * dpr, 0, 0, s * dpr, 0, 0);
+  }
+  window.addEventListener('resize', layout);
+  window.addEventListener('orientationchange', () => setTimeout(layout, 50));
+  function lockLandscape() { try { if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {}); } catch (e) { /* ignore */ } }
+
+  function startRoom(n, i) {
+    floor = FLOORS[n - 1]; room = floor.rooms[Math.min(i, floor.rooms.length - 1)];
+    resetWorld();
+    $('#hudFloor').textContent = `Étage ${n}`;
+    $('#hudTitle').textContent = floor.title;
+    renderDots();
+    buildHud();
+    $('#hint').hidden = true; hintCount = 0;
+    show('game'); layout();
+    banner(room.kind === 'atelier' ? 'Atelier' : roomName(room), room.kind === 'atelier' ? 'Regarde, puis à toi.' : room.hint, 3.2);
+    if (room.kind === 'atelier') startDemo('loop');
+    lastT = performance.now();
+    cancelAnimationFrame(raf); raf = requestAnimationFrame(loop);
+  }
+  function resetWorld() {
+    world = new World(room);
+    shake = 0; winAt = 0; idleT = 0; hintUntil = 0; flashes = []; particles = []; fx = {}; witchFx = { t: 0, text: '' }; flashWhite = 0; roomClearT = 0;
+    demo = null; demoMode = null; demoTimer = 0; activePointer = null; flight = null;
+  }
+  function stopLoop() { cancelAnimationFrame(raf); raf = 0; }
+  function renderDots() {
+    $('#hudDots').innerHTML = floor.rooms.map((r, i) => `<i class="${r.kind}${i < room.index ? ' ok' : ''}${i === room.index ? ' now' : ''}" title="${roomName(r)}"></i>`).join('');
+  }
+
+  function buildHud() {
+    const tools = $('#hudTools'); tools.innerHTML = '';
+    if (world.tools.length > 1) {
+      world.tools.forEach((t, i) => {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'tool' + (i === world.toolIndex ? ' on' : '');
+        b.innerHTML = toolIcon(t.type) + `<span>${t.label}</span>`;
+        b.onclick = () => { takeControl(); world.selectTool(i); buildHud(); SFX.flip(); };
+        tools.appendChild(b);
+      });
+    }
+    const t = world.tool;
+    const flip = $('#btnFlip'); flip.hidden = !(room.canFlip && t && t.poles);
+    flip.innerHTML = `↻ Retourner <span class="pole ${world.flipped ? 'flip' : ''}"><b>${world.flipped ? 'N' : 'S'}</b><b>${world.flipped ? 'S' : 'N'}</b></span>`;
+    const on = $('#btnOn'); on.hidden = !(t && t.type === 'electro');
+    on.textContent = world.electroOn ? 'ALLUMÉ' : 'ÉTEINT'; on.className = world.electroOn ? 'on' : '';
+    const turn = $('#btnTurn'); turn.hidden = !(room.turnsNeeded);
+    turn.innerHTML = `+ 1 tour <small>(${world.turns})</small>`;
+    const fil = $('#btnFilings'); fil.hidden = !room.filingsButton;
+    fil.className = world.filings ? 'on' : '';
+    $('#gauge').hidden = !(t && (t.type === 'nail' || room.turnsNeeded));
+    $('#btnShow').hidden = !(room.kind !== 'atelier' && hintCount >= 1);
+  }
+  function toolIcon(type) {
+    if (type === 'bar') return '<i class="ico bar"></i>';
+    if (type === 'double') return '<i class="ico bar"></i><i class="ico bar"></i>';
+    if (type === 'horseshoe') return '<i class="ico hs"></i>';
+    return '';
+  }
+  $('#btnFlip').onclick = () => { takeControl(); world.flip(); buildHud(); SFX.flip(); pulseButton('#btnFlip'); };
+  $('#btnOn').onclick = () => { takeControl(); world.toggleElectro(); buildHud(); SFX.on(world.electroOn); pulseButton('#btnOn'); };
+  $('#btnTurn').onclick = () => { takeControl(); world.addTurn(); buildHud(); SFX.turn(world.turns); pulseButton('#btnTurn'); };
+  $('#btnFilings').onclick = () => { takeControl(); world.toggleFilings(); buildHud(); };
+  $('#btnRestart').onclick = () => { resetWorld(); buildHud(); if (room.kind === 'atelier') startDemo('loop'); };
+  $('#btnHint').onclick = () => { showHint(); hintCount++; buildHud(); };
+  $('#btnShow').onclick = () => { resetWorld(); buildHud(); startDemo('once'); };
+  $('#btnTower').onclick = () => { show('tower'); renderTower(); };
+  function showHint() { $('#hintText').textContent = fr(room.hint); $('#hint').hidden = false; hintUntil = performance.now() + 7000; }
+  $('#hint').onclick = () => { $('#hint').hidden = true; };
+  function pulseButton(sel) { const b = $(sel); b.classList.remove('pulse'); void b.offsetWidth; b.classList.add('pulse'); }
+  function banner(text, sub, dur) { bannerText = text; bannerSub = sub || ''; bannerT = dur; }
+
+  // ---------- démo (atelier / Montre-moi) ----------
+  function startDemo(mode) {
+    demoMode = mode; demo = new Replay(world, room.demo); demoTimer = 0;
+    if (mode === 'once') banner('Regarde…', 'Puis tu rejoues toi-même.', 2.5);
+  }
+  function takeControl() {
+    if (!demo) return;
+    demo = null; demoMode = null;
+    resetWorld(); buildHud();
+    banner('À toi !', room.hint, 3);
+  }
+
+  // ---------- entrées ----------
+  function toLogical(e) {
+    if (!L.rot) return { x: (e.clientX - L.X) / L.s, y: (e.clientY - L.Y) / L.s };
+    return { x: (e.clientY - L.Y) / L.s, y: (L.X - e.clientX) / L.s };
+  }
+  let activePointer = null;
+  canvas.addEventListener('pointerdown', (e) => {
+    if (!world) return;
+    unlockAudio();
+    if (demo) { takeControl(); }
+    if (world.won || activePointer !== null) return;
+    activePointer = e.pointerId; try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    const p = toLogical(e); world.pointerDown(p.x, p.y); idleT = 0;
+    spawnRing(p.x, p.y, 'rgba(255,230,140,0.9)', 30);
+  });
+  canvas.addEventListener('pointermove', (e) => { if (!world || e.pointerId !== activePointer) return; const p = toLogical(e); world.pointerMove(p.x, p.y); });
+  const up = (e) => { if (!world || e.pointerId !== activePointer) return; activePointer = null; world.pointerUp(); };
+  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
+
+  // ---------- boucle ----------
+  function loop(t) {
+    raf = requestAnimationFrame(loop);
+    const dt = Math.min(1 / 30, (t - lastT) / 1000); lastT = t;
+    if (demo) {
+      demo.step(dt);
+      if (demo.done) { demoTimer += dt; if (demoTimer > (world.won ? 1.6 : 1.0)) { if (demoMode === 'loop') { resetWorld(); buildHud(); startDemo('loop'); } else { takeControl(); } } }
+    }
+    if (!world.won) { world.step(dt); if (!demo) idleT += dt; }
+    for (const ev of world.drainEvents()) onEvent(ev);
+    if (!demo && idleT > (room.kind === 'atelier' ? 14 : 30) && $('#hint').hidden && !world.won) {
+      if (room.kind === 'atelier') { resetWorld(); buildHud(); startDemo('loop'); banner('Regarde encore', '', 2); }
+      else { showHint(); hintCount++; buildHud(); }
+      idleT = -1e9;
+    }
+    if (hintUntil && t > hintUntil) { $('#hint').hidden = true; hintUntil = 0; }
+    if (shake > 0) shake -= dt;
+    if (bannerT > 0) bannerT -= dt;
+    if (flashWhite > 0) flashWhite -= dt;
+    if (witchFx.t > 0) witchFx.t -= dt;
+    for (const k in fx) { fx[k].sq *= Math.exp(-7 * dt); fx[k].pop *= Math.exp(-6 * dt); }
+    updateParticles(dt);
+    updateGauge();
+    if (world.won && !winAt && !demo) { winAt = t; shake = 0.4; flashWhite = 0.25; confetti(); if (room.index < floor.rooms.length - 1) banner(room.kind === 'atelier' ? 'Atelier réussi !' : 'Salle réussie !', '', 1.4); }
+    if (winAt > 0 && t - winAt > 1500) { winAt = -1; onWin(); }
+    if (flight) updateFlight(dt);
+    draw(t / 1000, dt);
+  }
+  function updateGauge() {
+    const g = $('#gauge'); if (g.hidden) return;
+    const t = world.tool;
+    if (t && t.type === 'nail') { const k = Math.round(world.nailCharge * 5); g.textContent = 'Aimantation ' + '▮'.repeat(k) + '▯'.repeat(5 - k); }
+    else if (room.turnsNeeded) { const k = Math.min(5, Math.round(world.turns / room.turnsNeeded * 4)); g.textContent = 'Force ' + '▮'.repeat(k) + '▯'.repeat(5 - k); }
+  }
+  function onEvent(ev) {
+    const b = ev.id && world.body(ev.id);
+    const c = b ? { x: b.x + b.w / 2, y: b.y + b.h / 2 } : null;
+    switch (ev.type) {
+      case 'attach': SFX.attach(); if (!demo) buzz(12); if (b) { fxOf(b.id).pop = 0.25; spawnBurst(c.x, b.y, 10, '#ffe066', 220); } break;
+      case 'detach': SFX.detach(); break;
+      case 'captured': SFX.captured(); if (!demo) buzz(40); shake = Math.max(shake, 0.25); if (b) { flashes.push({ x: c.x, y: b.y + b.h, t: 0.7, text: 'Hop !' }); spawnSmoke(c.x, b.y + b.h, 14); } witchReact('Hé !'); break;
+      case 'ko': SFX.ko(); if (!demo) buzz(60); shake = Math.max(shake, 0.35); if (b) { flashes.push({ x: c.x, y: b.y - 10, t: 0.9, text: 'Boum !' }); fxOf(b.id).stars = 1.4; spawnSmoke(c.x, b.y + b.h, 18); } witchReact('Oh non !'); break;
+      case 'land': SFX.land(); if (b) { fxOf(b.id).sq = Math.min(1, ev.v / 900); spawnSmoke(c.x, b.y + b.h, 6, 0.6); if (b.kind === 'knight') shake = Math.max(shake, 0.12); } break;
+      case 'button': case 'open': SFX.button(); spawnRing(c ? c.x : W / 2, c ? c.y : H / 2, '#3fbf5a', 50); break;
+      case 'key': SFX.latch(); spawnBurst(W - 200, 330, 16, '#ffd24a', 260); break;
+      case 'latched': SFX.latch(); if (b) spawnBurst(c.x, b.y, 12, '#cfd3d9', 200); break;
+      case 'secret': SFX.secret(); shake = Math.max(shake, 0.2); break;
+      case 'unhook': tone(1200, 0.05, 'square', 0.04); break;
+      case 'win': if (!demo) { SFX.win(); buzz([30, 40, 60]); witchReact(room.final ? 'Nooon !' : 'Grrr !'); } break;
+    }
+  }
+  function fxOf(id) { return fx[id] || (fx[id] = { sq: 0, pop: 0, stars: 0 }); }
+  function witchReact(text) { witchFx = { t: 1.2, text }; }
+
+  function onWin() {
+    const last = room.index >= floor.rooms.length - 1;
+    if (!last) {
+      progress.floor = floor.n; progress.room = room.index + 1; save();
+      SFX.room();
+      startRoom(floor.n, room.index + 1);
+      return;
+    }
+    if (!progress.done.includes(floor.n)) progress.done.push(floor.n);
+    if (floor.n >= progress.floor) { progress.floor = Math.min(TOTAL, floor.n + 1); progress.room = 0; }
+    save();
+    if (floor.final) { stopLoop(); showEnd(); return; }
+    startFlight();
+  }
+  // La sorcière arrive par la fenêtre, attrape la cage, et repart avec le chat
+  function startFlight() {
+    const c = room.cage || { x: W - 240, y: 540 };
+    flight = { phase: 'in', t: 0, from: { x: W + 260, y: 120 }, to: { x: c.x - 70, y: c.y - 150 }, cageTaken: false, spoken: false };
+    SFX.whoosh();
+  }
+  const easeOut = (k) => 1 - Math.pow(1 - k, 3), easeIn = (k) => k * k * k;
+  function updateFlight(dt) {
+    const f = flight; f.t += dt;
+    if (f.phase === 'in' && f.t >= 1.3) { f.phase = 'hover'; f.t = 0; }
+    else if (f.phase === 'hover') {
+      if (!f.spoken) { f.spoken = true; speak(floor.taunt + ' Encore un étage !', { pitch: 1.5, rate: 1.05 }); }
+      if (f.t >= 1.9) { f.phase = 'out'; f.t = 0; f.cageTaken = true; spawnSmoke(f.to.x + 150, f.to.y + 150, 22, 1.3); SFX.whoosh(); shake = 0.2; }
+    } else if (f.phase === 'out' && f.t >= 1.6) { flight = null; stopLoop(); show('tower'); renderTower(); }
+  }
+  function flightPos() {
+    const f = flight;
+    if (f.phase === 'in') { const k = easeOut(Math.min(1, f.t / 1.3)); return { x: f.from.x + (f.to.x - f.from.x) * k, y: f.from.y + (f.to.y - f.from.y) * k }; }
+    if (f.phase === 'hover') return { x: f.to.x, y: f.to.y + Math.sin(f.t * 6) * 8 };
+    const k = easeIn(Math.min(1, f.t / 1.6)); return { x: f.to.x + (W + 300 - f.to.x) * k, y: f.to.y + (-360 - f.to.y) * k };
+  }
+  function drawFlight() {
+    if (!flight) return;
+    const p = flightPos();
+    const img = flight.phase === 'out' ? IMG.sorciere_balai : IMG.sorciere_vol;
+    drawImageFit(img, { x: p.x, y: p.y, w: 300, h: 270 }, 'center');
+    if (flight.phase === 'hover') {
+      ctx.save(); ctx.globalAlpha = Math.min(1, flight.t * 3);
+      ctx.font = 'bold 26px Nunito, sans-serif'; const text = fr(floor.taunt);
+      const tw = Math.min(520, ctx.measureText(text).width + 40);
+      const bx = Math.max(20, Math.min(W - tw - 20, p.x + 150 - tw / 2)), by = p.y - 70;
+      ctx.fillStyle = C.text; rr(bx, by, tw, 54, 16); ctx.fill();
+      ctx.fillStyle = '#2b1a00'; ctx.textAlign = 'center'; wrapText(text, bx + tw / 2, by + 35, tw - 30, 28);
+      ctx.restore();
+    }
+  }
+  function showEnd() {
+    show('end');
+    SFX.win(); setTimeout(SFX.meow, 500); setTimeout(SFX.win, 900);
+    speak('Bravo ! Tu as délivré le chat !', { rate: 0.95 });
+    $('#btnEndHome').onclick = () => { show('title'); renderTitle(); };
+  }
+
+  // ---------- particules ----------
+  function spawnBurst(x, y, n, color, speed) {
+    if (REDUCED) n = Math.min(n, 4);
+    for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, v = speed * (0.4 + Math.random() * 0.6); particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 80, life: 0.5 + Math.random() * 0.3, t: 0, color, size: 3 + Math.random() * 4, g: 600, kind: 'spark' }); }
+  }
+  function spawnSmoke(x, y, n, scale = 1) {
+    if (REDUCED) n = Math.min(n, 3);
+    for (let i = 0; i < n; i++) { const a = Math.PI + Math.random() * Math.PI, v = 60 + Math.random() * 90; particles.push({ x: x + (Math.random() - 0.5) * 40, y, vx: Math.cos(a) * v * (Math.random() < 0.5 ? 1 : -1), vy: Math.sin(a) * v * 0.5, life: 0.6 + Math.random() * 0.4, t: 0, color: 'rgba(210,200,220,0.7)', size: (8 + Math.random() * 10) * scale, g: -120, kind: 'puff' }); }
+  }
+  function spawnRing(x, y, color, r) { particles.push({ x, y, vx: 0, vy: 0, life: 0.5, t: 0, color, size: r, g: 0, kind: 'ring' }); }
+  function confetti() {
+    const n = REDUCED ? 20 : 80, colors = ['#ffb020', '#7ad3ff', '#e0453a', '#3fbf5a', '#fff6e6', '#c77dff'];
+    for (let i = 0; i < n; i++) particles.push({ x: Math.random() * W, y: 60 + Math.random() * 100, vx: (Math.random() - 0.5) * 200, vy: 100 + Math.random() * 200, life: 2.2 + Math.random(), t: 0, color: colors[i % colors.length], size: 8 + Math.random() * 8, g: 300, kind: 'confetti', rot: Math.random() * 6, vr: (Math.random() - 0.5) * 10 });
+  }
+  function updateParticles(dt) {
+    for (const p of particles) { p.t += dt; p.vy += p.g * dt; p.x += p.vx * dt; p.y += p.vy * dt; if (p.kind === 'confetti') { p.rot += p.vr * dt; p.vx *= Math.exp(-1.5 * dt); } }
+    particles = particles.filter((p) => p.t < p.life);
+  }
+  function drawParticles() {
+    for (const p of particles) {
+      const k = 1 - p.t / p.life;
+      ctx.globalAlpha = Math.max(0, Math.min(1, k * 1.3));
+      if (p.kind === 'spark') { ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.size * k, 0, 7); ctx.fill(); }
+      else if (p.kind === 'puff') { ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (0.6 + 0.8 * (1 - k)), 0, 7); ctx.fill(); }
+      else if (p.kind === 'ring') { ctx.strokeStyle = p.color; ctx.lineWidth = 4 * k; ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (0.3 + 1.2 * (1 - k)), 0, 7); ctx.stroke(); }
+      else if (p.kind === 'confetti') { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillStyle = p.color; ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2); ctx.restore(); }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ---------- dessin ----------
+  const C = {
+    stoneA: '#4a3d5c', stoneB: '#56486a', floor: '#6b5a52', floorLine: '#4a3d36',
+    wood: '#a0642c', woodLine: '#6e4218', glass: 'rgba(170,220,255,0.35)', glassLine: 'rgba(220,245,255,0.8)',
+    iron: '#5a6068', ironLine: '#2c3036', rivet: '#8e959e', pit: '#120c1a', zone: 'rgba(255,240,180,0.09)', zoneLine: 'rgba(255,220,120,0.75)',
+    red: '#e0453a', blue: '#2f6fd6', gold: '#e8b73a', hand: '#f3c89c', text: '#fff6e6',
+  };
+  function rr(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
+  let slideTick = 0;
+
+  function draw(time, dt) {
+    const lv = room, w = world;
+    ctx.save();
+    if (shake > 0 && !REDUCED) ctx.translate((Math.random() - 0.5) * 14 * shake, (Math.random() - 0.5) * 14 * shake);
+    ctx.fillStyle = C.stoneA; ctx.fillRect(0, 0, W, H);
+    drawBricks();
+    if (lv.zone && w.tool && w.tool.type !== 'electro' && w.tool.type !== 'compass') drawZone(time);
+    if (lv.well) { ctx.fillStyle = C.pit; ctx.fillRect(lv.well.x, lv.well.y, lv.well.w, lv.well.h); }
+    for (const s of lv.sensors || []) if (s.type === 'trap') { ctx.fillStyle = C.pit; ctx.fillRect(s.x, s.y - 2, s.w, 100); }
+    for (const s of w.solids) drawSolid(s);
+    drawSensors();
+    if (lv.lodestone) drawImageFit(IMG.magnetite, lv.lodestone);
+    if (lv.kind === 'atelier') drawSign();
+    drawCage(time);
+    drawWitch(time);
+    // poussière des corps qui glissent
+    slideTick += dt;
+    if (slideTick > 0.07) { slideTick = 0; for (const b of w.bodies) if (b.grounded && Math.abs(b.vx) > 90 && !b.hidden && !b.captured) spawnSmoke(b.x + b.w / 2 - Math.sign(b.vx) * b.w / 2, b.y + b.h, 1, 0.5); }
+    for (const b of w.bodies) drawBody(b, time);
+    if (w.filings) drawFilings();
+    drawPulls(time);
+    drawMagnet(time);
+    if (lv.dark) drawDark();
+    drawParticles();
+    drawFlight();
+    drawFlashes();
+    drawBanner();
+    if (flashWhite > 0) { ctx.fillStyle = `rgba(255,255,255,${flashWhite * 2})`; ctx.fillRect(0, 0, W, H); }
+    ctx.restore();
+  }
+
+  function drawBricks() {
+    const bw = 96, bh = 44;
+    for (let row = 0, y = 90; y < H; row++, y += bh) {
+      const off = row % 2 ? bw / 2 : 0;
+      for (let x = -bw + off; x < W; x += bw) {
+        const k = ((row * 7 + Math.round(x / bw) * 13) % 5);
+        ctx.fillStyle = k < 2 ? C.stoneB : C.stoneA;
+        ctx.fillRect(x + 2, y + 2, bw - 4, bh - 4);
+      }
+    }
+  }
+  function drawSign() {
+    ctx.fillStyle = '#7a4a1e'; rr(W / 2 - 110, 128, 220, 56, 10); ctx.fill();
+    ctx.fillStyle = C.wood; rr(W / 2 - 104, 134, 208, 44, 8); ctx.fill();
+    ctx.fillStyle = '#fff6e6'; ctx.font = 'bold 30px Fredoka, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('ATELIER', W / 2, 167);
+  }
+  function drawZone(time) {
+    const zones = Array.isArray(room.zone) ? room.zone : [room.zone];
+    const blocked = world.fingerBlocked;
+    for (const z of zones) {
+      ctx.fillStyle = C.zone; ctx.fillRect(z.x, z.y, z.w, z.h);
+      ctx.strokeStyle = C.zoneLine; ctx.lineWidth = blocked ? 6 : 2; ctx.setLineDash([14, 10]); ctx.lineDashOffset = -time * 30;
+      ctx.globalAlpha = blocked ? 0.6 + 0.4 * Math.sin(time * 12) : 0.5;
+      ctx.strokeRect(z.x + 3, z.y + 3, z.w - 6, z.h - 6); ctx.setLineDash([]); ctx.lineDashOffset = 0; ctx.globalAlpha = 1;
+    }
+    if (blocked) {
+      ctx.font = 'bold 44px Fredoka, sans-serif'; ctx.fillStyle = C.red; ctx.textAlign = 'center';
+      ctx.fillText('✗', world.finger.x, world.finger.y + 16);
+      ctx.font = 'bold 26px Nunito, sans-serif'; ctx.fillStyle = C.text;
+      ctx.fillText('Ta main reste dans la zone claire', world.finger.x, world.finger.y - 40);
+    }
+  }
+  function drawSolid(s) {
+    if (s.mat === 'stone') {
+      ctx.fillStyle = C.floor; ctx.fillRect(s.x, s.y, s.w, s.h);
+      if (s.h >= 60 && s.w >= 300) { ctx.fillStyle = C.floorLine; ctx.fillRect(s.x, s.y, s.w, 6); for (let x = s.x + 40; x < s.x + s.w; x += 80) ctx.fillRect(x, s.y + 6, 3, s.h - 6); }
+      else { ctx.strokeStyle = C.floorLine; ctx.lineWidth = 4; ctx.strokeRect(s.x + 2, s.y + 2, s.w - 4, s.h - 4); }
+    } else if (s.mat === 'wood') {
+      ctx.fillStyle = C.wood; ctx.fillRect(s.x, s.y, s.w, s.h);
+      ctx.strokeStyle = C.woodLine; ctx.lineWidth = 3; ctx.strokeRect(s.x + 1.5, s.y + 1.5, s.w - 3, s.h - 3);
+      if (s.w > s.h) for (let x = s.x + 60; x < s.x + s.w; x += 60) { ctx.beginPath(); ctx.moveTo(x, s.y + 4); ctx.lineTo(x, s.y + s.h - 4); ctx.stroke(); }
+      else for (let y = s.y + 60; y < s.y + s.h; y += 60) { ctx.beginPath(); ctx.moveTo(s.x + 4, y); ctx.lineTo(s.x + s.w - 4, y); ctx.stroke(); }
+    } else if (s.mat === 'glass') {
+      ctx.fillStyle = C.glass; ctx.fillRect(s.x, s.y, s.w, s.h);
+      ctx.strokeStyle = C.glassLine; ctx.lineWidth = 2; ctx.strokeRect(s.x + 1, s.y + 1, s.w - 2, s.h - 2);
+      ctx.beginPath(); ctx.moveTo(s.x + 5, s.y + 20); ctx.lineTo(s.x + 5, s.y + s.h * 0.4); ctx.stroke();
+    } else if (s.mat === 'iron') {
+      ctx.fillStyle = C.iron; ctx.fillRect(s.x, s.y, s.w, s.h);
+      ctx.strokeStyle = C.ironLine; ctx.lineWidth = 3; ctx.strokeRect(s.x + 1.5, s.y + 1.5, s.w - 3, s.h - 3);
+      ctx.fillStyle = C.rivet;
+      for (let y = s.y + 14; y < s.y + s.h - 8; y += 40) { ctx.beginPath(); ctx.arc(s.x + s.w / 2, y, 4, 0, 7); ctx.fill(); }
+    }
+  }
+  function drawSensors() {
+    for (const s of world.sensors) {
+      if (s.type === 'button') {
+        ctx.fillStyle = '#3a3340'; rr(s.x - 6, s.y + 8, s.w + 12, s.h - 8 + 6, 6); ctx.fill();
+        ctx.fillStyle = s.pressed ? '#3fbf5a' : C.red; rr(s.x, s.y + (s.pressed ? 10 : 0), s.w, 14, 7); ctx.fill();
+      } else if (s.type === 'keyhole') {
+        const cx = s.x + s.w / 2, cy = s.y + s.h / 2;
+        ctx.fillStyle = s.pressed ? '#3fbf5a' : C.gold; rr(cx - 28, cy - 22, 56, 44, 8); ctx.fill();
+        ctx.fillStyle = '#2b2b2b'; ctx.beginPath(); ctx.arc(cx, cy - 6, 8, 0, 7); ctx.fill(); ctx.fillRect(cx - 4, cy - 6, 8, 18);
+        if (!s.pressed) { ctx.strokeStyle = C.zoneLine; ctx.setLineDash([8, 8]); ctx.lineWidth = 2; ctx.strokeRect(s.x, s.y, s.w, s.h); ctx.setLineDash([]); }
+      } else if (s.type === 'latch') {
+        const b = world.body(s.body);
+        if (b && b.kind === 'herse') { ctx.fillStyle = '#2c3036'; ctx.fillRect(s.x - 12, s.y - 60, 12, 30); ctx.fillRect(s.x + s.w, s.y - 60, 12, 30); }
+      } else if (s.type === 'secret' && s.done) {
+        ctx.fillStyle = C.pit; ctx.fillRect(s.x, s.y, s.w, s.h);
+      }
+    }
+  }
+  function drawImageFit(img, r, align = 'bottom') {
+    if (!img) return;
+    const s = Math.min(r.w / img.width, r.h / img.height);
+    const w = img.width * s, h = img.height * s;
+    const x = r.x + (r.w - w) / 2, y = align === 'bottom' ? r.y + r.h - h : r.y + (r.h - h) / 2;
+    ctx.drawImage(img, x, y, w, h);
+  }
+  function drawCage(time) {
+    const c = room.cage; if (!c || room.index < room.total - 1) return;
+    if (flight && flight.cageTaken) return;
+    if (world.won && room.final) { drawImageFit(IMG.chat_saute, { x: c.x - 40, y: c.y - 60 - Math.abs(Math.sin(time * 4)) * 20, w: 240, h: 240 }); return; }
+    const bob = world.won ? Math.sin(time * 40) * 4 : Math.sin(time * 1.6) * 2;
+    drawImageFit(IMG.chat_cage, { x: c.x + bob, y: c.y, w: 150, h: 180 });
+  }
+  function drawWitch(time) {
+    const wi = room.witch;
+    if (wi && wi.rides) {
+      const g = world.body(wi.rides);
+      if (g) {
+        const jump = witchFx.t > 0 ? Math.abs(Math.sin(witchFx.t * 8)) * 30 : 0;
+        drawImageFit(IMG.sorciere, { x: g.x + g.w / 2 - 45, y: g.y - 150 + Math.sin(time * 2.5) * 5 - jump, w: 110, h: 150 });
+      }
+    }
+    if (witchFx.t > 0 && !flight) {
+      // elle crie depuis l'étage du dessus
+      const x = W - 230, y = 130;
+      ctx.save(); ctx.globalAlpha = Math.min(1, witchFx.t * 2);
+      ctx.fillStyle = C.text; rr(x, y, 190, 50, 16); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(x + 150, y); ctx.lineTo(x + 175, y - 22); ctx.lineTo(x + 178, y); ctx.fill();
+      ctx.fillStyle = '#2b1a00'; ctx.font = 'bold 28px Fredoka, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(fr(witchFx.text), x + 95, y + 36);
+      ctx.restore();
+    }
+  }
+  function drawBody(b, time) {
+    if (b.hidden) return;
+    const f = fx[b.id];
+    ctx.save();
+    if (b.captured) ctx.globalAlpha = Math.max(0, 1 - (b.y - 700) / 200);
+    // squash / pop / dandinement
+    const cx = b.x + b.w / 2, by = b.y + b.h;
+    let sx = 1, sy = 1, rot = 0;
+    if (f) { sx += f.sq * 0.3 + f.pop; sy -= f.sq * 0.3 - f.pop; }
+    if (b.grounded && Math.abs(b.vx) > 60 && !b.rail) rot = Math.sin(time * 22) * 0.06 * Math.min(1, Math.abs(b.vx) / 250);
+    if (b.captured) rot = (b.y - 700) / 300;
+    ctx.translate(cx, by); ctx.rotate(rot); ctx.scale(sx, sy); ctx.translate(-cx, -by);
+    switch (b.kind) {
+      case 'knight':
+        if (b.ko) drawImageFit(IMG.armure_tas, b); else drawImageFit(IMG.armure, { x: b.x - 10, y: b.y, w: b.w + 20, h: b.h });
+        if (b.pole && (!b.hiddenPole || world.filings)) drawPoleLabel(b);
+        else if (b.pole) drawHiddenPole(b);
+        if (f && f.stars > 0) { drawStars(cx, b.y - 20, time); f.stars -= 1 / 60; }
+        break;
+      case 'straw': drawImageFit(IMG.epouvantail, { x: b.x - 10, y: b.y, w: b.w + 20, h: b.h }); break;
+      case 'sword': drawImageFit(IMG.epee, { x: b.x - 10, y: b.y, w: b.w + 20, h: b.h }); break;
+      case 'bolt': drawBolt(b); break;
+      case 'ring':
+        ctx.strokeStyle = '#8e959e'; ctx.lineWidth = 9; ctx.beginPath(); ctx.arc(b.x + b.w / 2, b.y + b.h / 2, b.w / 2 - 5, 0, 7); ctx.stroke();
+        ctx.strokeStyle = '#c9ced4'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(b.x + b.w / 2, b.y + b.h / 2, b.w / 2 - 7, Math.PI * 1.1, Math.PI * 1.6); ctx.stroke();
+        break;
+      case 'key':
+        ctx.fillStyle = C.gold; ctx.beginPath(); ctx.arc(b.x + 14, b.y + b.h / 2, 12, 0, 7); ctx.fill();
+        ctx.fillStyle = '#2b2b2b'; ctx.beginPath(); ctx.arc(b.x + 14, b.y + b.h / 2, 5, 0, 7); ctx.fill();
+        ctx.fillStyle = C.gold; ctx.fillRect(b.x + 24, b.y + b.h / 2 - 4, b.w - 26, 8); ctx.fillRect(b.x + b.w - 10, b.y + b.h / 2, 6, 10); ctx.fillRect(b.x + b.w - 22, b.y + b.h / 2, 6, 8);
+        if (!b.attached && !b.consumed) { ctx.fillStyle = `rgba(255,230,120,${0.3 + 0.3 * Math.sin(time * 5)})`; ctx.beginPath(); ctx.arc(b.x + b.w / 2, b.y + b.h / 2, 36, 0, 7); ctx.fill(); }
+        break;
+      case 'herse': drawHerse(b); break;
+      case 'lever':
+        ctx.fillStyle = '#2c3036'; ctx.fillRect(b.x + 8, b.y - 40, 14, b.h + 60);
+        ctx.fillStyle = C.wood; ctx.fillRect(b.x, b.y, b.w, b.h); ctx.fillStyle = C.red; ctx.beginPath(); ctx.arc(b.x + b.w / 2, b.y + 6, 16, 0, 7); ctx.fill();
+        break;
+      case 'giant': drawBar(b.x, b.y, b.w, b.h, b.pole === 'N', true); break;
+    }
+    ctx.restore();
+  }
+  function drawStars(x, y, time) {
+    ctx.fillStyle = C.gold; ctx.font = 'bold 26px Fredoka, sans-serif'; ctx.textAlign = 'center';
+    for (let i = 0; i < 4; i++) { const a = time * 4 + i * Math.PI / 2; ctx.fillText('★', x + Math.cos(a) * 46, y + Math.sin(a) * 12); }
+  }
+  function drawBolt(b) {
+    ctx.fillStyle = '#2c3036'; rr(b.x - 8, b.y - 6, b.w + 16, b.h + 12, 6); ctx.fill();
+    ctx.fillStyle = b.latched ? '#9fd6a8' : '#9aa1aa'; rr(b.x, b.y, b.w, b.h, 8); ctx.fill();
+    ctx.fillStyle = '#d7dce2'; rr(b.x + 6, b.y + 4, b.w - 12, 5, 3); ctx.fill();
+    ctx.fillStyle = '#5a6068'; ctx.beginPath(); ctx.arc(b.x + b.w / 2, b.y + b.h / 2, 5, 0, 7); ctx.fill();
+  }
+  function drawHerse(b) {
+    ctx.fillStyle = '#3f454d';
+    for (let x = b.x + 6; x < b.x + b.w; x += 30) ctx.fillRect(x, b.y, 10, b.h);
+    for (let y = b.y + 6; y < b.y + b.h; y += 36) ctx.fillRect(b.x, y, b.w, 10);
+    ctx.fillStyle = '#9aa1aa'; ctx.fillRect(b.x, b.y, b.w, 8);
+    if (b.lockedUntil && !b.lockedUntil(world)) { ctx.font = 'bold 48px Fredoka, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = C.gold; ctx.fillText('🔒', b.x + b.w / 2, b.y - 16); }
+  }
+  function drawBar(x, y, w, h, flipped, big) {
+    const left = flipped ? C.red : C.blue, right = flipped ? C.blue : C.red;
+    ctx.fillStyle = left; rr(x, y, w / 2, h, 8); ctx.fill(); ctx.fillStyle = right; rr(x + w / 2, y, w / 2, h, 8); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.35)'; rr(x + 6, y + 4, w - 12, h * 0.25, 4); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = `bold ${big ? 36 : 20}px Fredoka, sans-serif`;
+    ctx.fillText(flipped ? 'N' : 'S', x + w / 4, y + h / 2 + (big ? 13 : 7)); ctx.fillText(flipped ? 'S' : 'N', x + 3 * w / 4, y + h / 2 + (big ? 13 : 7));
+  }
+  function drawPoleLabel(b) { drawBar(b.x - 14, b.y + b.h * 0.45, b.w + 28, 26, b.pole === 'N', false); }
+  function drawHiddenPole(b) {
+    const y = b.y + b.h * 0.45;
+    ctx.fillStyle = '#7a6a8a'; rr(b.x - 14, y, b.w + 28, 26, 8); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 20px Fredoka, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('? ?', b.x + b.w / 2, y + 19);
+  }
+  function drawPulls(time) {
+    for (const p of world.pulls) {
+      const dx = p.from.x - p.to.x, dy = p.from.y - p.to.y, d = Math.hypot(dx, dy) || 1;
+      const ux = dx / d, uy = dy / d;
+      const n = Math.max(2, Math.floor(d / 60));
+      ctx.strokeStyle = p.sign > 0 ? 'rgba(255,230,120,0.85)' : 'rgba(255,90,70,0.9)'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+      for (let i = 0; i < n; i++) {
+        const t = ((i / n) + (time * 0.8 * (p.sign > 0 ? 1 : -1)) % 1 + 1) % 1;
+        const x = p.to.x + ux * d * t, y = p.to.y + uy * d * t;
+        const dir = p.sign;
+        ctx.beginPath(); ctx.moveTo(x - ux * 10 * dir + uy * 8, y - uy * 10 * dir - ux * 8); ctx.lineTo(x, y); ctx.lineTo(x - ux * 10 * dir - uy * 8, y - uy * 10 * dir + ux * 8); ctx.stroke();
+      }
+    }
+  }
+  function drawMagnet(time) {
+    const w = world, t = w.tool; if (!t) return;
+    if (t.type === 'electro') { drawCrane(time); return; }
+    if (!w.finger.down) return;
+    const x = w.finger.x, y = w.finger.y;
+    const src = w.sources.find((s) => s.root && s.kind === t.type);
+    ctx.save();
+    if (demo) ctx.globalAlpha = 0.8;
+    if (src) {
+      const pulse = 4 * Math.sin(time * 5);
+      const g = ctx.createRadialGradient(x, y, 10, x, y, src.range + pulse); g.addColorStop(0, 'rgba(255,230,140,0.16)'); g.addColorStop(1, 'rgba(255,230,140,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, src.range + pulse, 0, 7); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,240,200,0.4)'; ctx.setLineDash([10, 12]); ctx.lineDashOffset = -time * 40; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, src.range + pulse, 0, 7); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
+      // étincelles qui tournent
+      for (let i = 0; i < 3; i++) { const a = time * 3 + i * 2.1; ctx.fillStyle = 'rgba(255,240,160,0.9)'; ctx.beginPath(); ctx.arc(x + Math.cos(a) * 52, y + Math.sin(a) * 40, 3, 0, 7); ctx.fill(); }
+    }
+    ctx.fillStyle = C.hand; ctx.beginPath(); ctx.arc(x, y - 44, 22, 0, 7); ctx.fill(); ctx.fillRect(x - 14, y - 44, 28, 26);
+    if (t.type === 'bar') drawBar(x - 36, y - 15, 72, 30, w.flipped, false);
+    else if (t.type === 'double') { drawBar(x - 42, y - 30, 84, 28, w.flipped, false); drawBar(x - 42, y + 2, 84, 28, w.flipped, false); }
+    else if (t.type === 'horseshoe') drawHorseshoe(x, y, w.flipped);
+    else if (t.type === 'nail') drawNail(x, y, w.nailCharge);
+    else if (t.type === 'compass') drawCompass(x, y);
+    if (demo) { ctx.fillStyle = C.text; ctx.font = 'bold 24px Nunito, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('Regarde…', x, y - 76); }
+    ctx.restore();
+  }
+  function drawHorseshoe(x, y, flipped) {
+    ctx.lineWidth = 22; ctx.lineCap = 'butt';
+    ctx.strokeStyle = C.red; ctx.beginPath(); ctx.arc(x, y - 10, 30, Math.PI, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = flipped ? C.red : C.blue; ctx.fillRect(x - 41, y - 10, 22, 34);
+    ctx.fillStyle = flipped ? C.blue : C.red; ctx.fillRect(x + 19, y - 10, 22, 34);
+    ctx.fillStyle = C.red; ctx.fillRect(x - 41, y - 12, 22, 4); ctx.fillRect(x + 19, y - 12, 22, 4);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 18px Fredoka, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(flipped ? 'N' : 'S', x - 30, y + 14); ctx.fillText(flipped ? 'S' : 'N', x + 30, y + 14);
+  }
+  function drawNail(x, y, charge) {
+    if (charge > 0.02) { const g = ctx.createRadialGradient(x, y, 5, x, y, 70); g.addColorStop(0, `rgba(120,200,255,${0.5 * charge})`); g.addColorStop(1, 'rgba(120,200,255,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 70, 0, 7); ctx.fill(); }
+    ctx.fillStyle = '#b8bec6'; ctx.fillRect(x - 5, y - 30, 10, 60); ctx.fillStyle = '#8e959e'; rr(x - 14, y - 36, 28, 10, 4); ctx.fill();
+    ctx.fillStyle = '#b8bec6'; ctx.beginPath(); ctx.moveTo(x - 5, y + 30); ctx.lineTo(x + 5, y + 30); ctx.lineTo(x, y + 44); ctx.fill();
+  }
+  function drawCompass(x, y) {
+    ctx.fillStyle = '#f7f1e3'; ctx.beginPath(); ctx.arc(x, y, 46, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 5; ctx.stroke();
+    const a = world.compassAngle();
+    if (a !== null) {
+      ctx.save(); ctx.translate(x, y); ctx.rotate(a);
+      ctx.fillStyle = C.red; ctx.beginPath(); ctx.moveTo(38, 0); ctx.lineTo(0, -9); ctx.lineTo(0, 9); ctx.fill();
+      ctx.fillStyle = C.blue; ctx.beginPath(); ctx.moveTo(-38, 0); ctx.lineTo(0, -9); ctx.lineTo(0, 9); ctx.fill();
+      ctx.restore();
+    }
+    ctx.fillStyle = '#3a3a3a'; ctx.beginPath(); ctx.arc(x, y, 5, 0, 7); ctx.fill();
+  }
+  function drawCrane(time) {
+    const c = world.crane; if (!c) return;
+    const on = world.electroOn;
+    ctx.fillStyle = '#2c3036'; ctx.fillRect(40, 110, W - 80, 10);
+    ctx.fillStyle = '#5a6068'; rr(c.x - 30, 104, 60, 22, 6); ctx.fill();
+    ctx.strokeStyle = '#2c3036'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(c.x, 126); ctx.lineTo(c.x, c.y - 30); ctx.stroke();
+    const turns = world.turns;
+    ctx.fillStyle = '#8e959e'; rr(c.x - 36, c.y - 30, 72, 44, 8); ctx.fill();
+    ctx.strokeStyle = '#d96b2b'; ctx.lineWidth = 4;
+    for (let i = 0; i < turns; i++) { const yy = c.y - 24 + i * (34 / Math.max(1, turns - 1) || 0); ctx.beginPath(); ctx.moveTo(c.x - 30, yy); ctx.lineTo(c.x + 30, yy + 4); ctx.stroke(); }
+    ctx.fillStyle = on ? '#ffd24a' : '#4a4f56'; rr(c.x - 44, c.y + 10, 88, 14, 7); ctx.fill();
+    if (on) {
+      const g = ctx.createRadialGradient(c.x, c.y + 18, 6, c.x, c.y + 18, 70); g.addColorStop(0, 'rgba(255,220,80,0.5)'); g.addColorStop(1, 'rgba(255,220,80,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(c.x, c.y + 18, 70, 0, 7); ctx.fill();
+      for (let i = 0; i < 3; i++) { const a = time * 6 + i * 2.1; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(c.x + Math.cos(a) * 50, c.y + 18 + Math.sin(a) * 30, 2.5, 0, 7); ctx.fill(); }
+    }
+    const src = world.sources.find((s) => s.kind === 'electro');
+    if (src) { ctx.strokeStyle = 'rgba(255,240,200,0.3)'; ctx.setLineDash([10, 12]); ctx.lineDashOffset = -time * 40; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(src.x, src.y, src.range, 0, 7); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0; }
+    ctx.fillStyle = C.text; ctx.font = 'bold 22px Nunito, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(on ? 'ALLUMÉ' : 'ÉTEINT', c.x, c.y - 44);
+    if (demo) { ctx.fillText('Regarde…', c.x, c.y - 72); }
+  }
+  function drawFilings() {
+    const src = world.sources.find((s) => s.root && s.poleLeft);
+    const targets = [];
+    if (src) targets.push({ x: src.x, y: src.y, w: 72 });
+    for (const b of world.bodies) if (b.pole && !b.hidden) targets.push({ x: b.x + b.w / 2, y: b.y + b.h * 0.45 + 13, w: b.w + 28 });
+    ctx.strokeStyle = 'rgba(60,60,70,0.85)'; ctx.lineWidth = 2;
+    for (const t of targets) {
+      for (let i = 1; i <= 4; i++) { ctx.beginPath(); ctx.ellipse(t.x, t.y, t.w / 2 + i * 26, 14 + i * 20, 0, 0, 7); ctx.stroke(); }
+      ctx.fillStyle = 'rgba(40,40,50,0.8)';
+      for (let i = 0; i < 60; i++) { const a = (i / 60) * Math.PI * 2; const r = 30 + (i % 5) * 18; ctx.fillRect(t.x + Math.cos(a) * (t.w / 2 + r) - 1, t.y + Math.sin(a) * (10 + r * 0.7) - 1, 3, 3); }
+    }
+  }
+  function drawDark() {
+    const f = world.finger;
+    ctx.save();
+    if (f.down) {
+      const g = ctx.createRadialGradient(f.x, f.y, 40, f.x, f.y, 220);
+      g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.7, 'rgba(0,0,0,0.75)'); g.addColorStop(1, 'rgba(0,0,0,0.93)');
+      ctx.fillStyle = g; ctx.fillRect(0, 90, W, H - 90);
+    } else { ctx.fillStyle = 'rgba(0,0,0,0.9)'; ctx.fillRect(0, 90, W, H - 90); }
+    ctx.restore();
+    const sec = world.sensor('secret');
+    if (world.won || (sec && sec.done)) return;
+    ctx.fillStyle = C.text; ctx.font = 'bold 26px Nunito, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Touche l’écran : la boussole montre où chercher.', W / 2, 150);
+  }
+  function drawFlashes() {
+    for (const f of flashes) {
+      f.t -= 1 / 60;
+      ctx.globalAlpha = Math.max(0, Math.min(1, f.t * 2));
+      ctx.font = 'bold 44px Fredoka, sans-serif'; ctx.fillStyle = C.gold; ctx.textAlign = 'center'; ctx.strokeStyle = '#2b2b2b'; ctx.lineWidth = 6;
+      const s = 1 + Math.max(0, f.t - 0.5) * 0.8;
+      ctx.save(); ctx.translate(f.x, f.y - (0.9 - f.t) * 50); ctx.scale(s, s);
+      ctx.strokeText(f.text, 0, 0); ctx.fillText(f.text, 0, 0); ctx.restore();
+      ctx.globalAlpha = 1;
+    }
+    flashes = flashes.filter((f) => f.t > 0);
+  }
+  function drawBanner() {
+    if (bannerT <= 0) return;
+    const k = Math.min(1, bannerT * 3), slide = (1 - Math.min(1, (3.2 - bannerT) * 4)) * -40;
+    ctx.save(); ctx.globalAlpha = k;
+    ctx.fillStyle = 'rgba(20,16,32,0.85)'; rr(W / 2 - 360, 210 + slide, 720, bannerSub ? 110 : 70, 18); ctx.fill();
+    ctx.fillStyle = C.gold; ctx.font = 'bold 40px Fredoka, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(fr(bannerText), W / 2, 258 + slide);
+    if (bannerSub) { ctx.fillStyle = C.text; ctx.font = 'bold 22px Nunito, sans-serif'; wrapText(fr(bannerSub), W / 2, 296 + slide, 680, 26); }
+    ctx.restore();
+  }
+  function wrapText(text, x, y, maxW, lh) {
+    const words = text.split(' '); let line = '';
+    for (const w of words) { const test = line ? line + ' ' + w : w; if (ctx.measureText(test).width > maxW) { ctx.fillText(line, x, y); line = w; y += lh; } else line = test; }
+    if (line) ctx.fillText(line, x, y);
+  }
+
+  // ---------- démarrage ----------
+  function loadImages(cb) {
+    let n = ASSETS.length;
+    for (const name of ASSETS) {
+      const im = new Image();
+      im.onload = im.onerror = () => { IMG[name] = im.complete && im.naturalWidth ? im : null; if (--n === 0) cb(); };
+      im.src = `assets/${name}.png`;
+    }
+  }
+  function boot(state) {
+    layout();
+    initTitle();
+    if (state && state.screen === 'tower') { show('tower'); renderTower(); } else show('title');
+    if (window.claude && window.claude.hot && window.claude.hot.snapshot) window.claude.hot.snapshot(() => ({ screen: current === 'title' ? 'title' : 'tower' }));
+  }
+  loadImages(() => {
+    const hot = window.claude && window.claude.hot;
+    if (hot && hot.ready) hot.ready(boot); else boot((hot && hot.data) || {});
+  });
+  window.__game = { startRoom, get world() { return world; }, get demo() { return demo; }, show, openCard, renderTower, takeControl, FLOORS };
+})();
+
+</script>
