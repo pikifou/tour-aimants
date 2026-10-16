@@ -421,6 +421,7 @@
             if (sn.removes) { this.openSolids(sn.removes); this.events.push({ type: 'open', id: sn.id }); }
           }
         } else if (sn.type === 'alarm') {
+          if (this.won) continue;            // salle déjà gagnée : la cloche ne compte plus
           for (const b of this.bodies) {
             if (b.tag !== 'knight' || b.ko || b.captured || b.hidden) continue;
             if (pointIn(center(b), sn)) { this.failed = true; this.events.push({ type: 'fail', id: sn.id }); }

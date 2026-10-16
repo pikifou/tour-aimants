@@ -378,7 +378,9 @@
       demo.step(dt);
       if (demo.done) { demoTimer += dt; if (demoTimer > (world.won ? 1.6 : 1.0)) { if (demoMode === 'loop') { resetWorld(); buildHud(); startDemo('loop'); } else { takeControl(); } } }
     }
-    if (!world.won) { world.step(dt); if (!demo) idleT += dt; }
+    // la physique continue après la victoire (le dernier chevalier finit de tomber dans son trou), mais l'aimant est lâché
+    if (world.won && activePointer !== null) { activePointer = null; world.pointerUp(); }
+    world.step(dt); if (!demo && !world.won) idleT += dt;
     for (const ev of world.drainEvents()) onEvent(ev);
     if (!demo && idleT > (room.kind === 'atelier' ? 14 : 30) && $('#hint').hidden && !world.won) {
       if (room.kind === 'atelier') { resetWorld(); buildHud(); startDemo('loop'); banner('Regarde encore', '', 2); }
