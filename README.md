@@ -21,4 +21,4 @@ node --test tests/levels.test.js
 
 ## Aussi dans ce dépôt
 
-[Chasseur de Dragons](https://pikifou.github.io/tour-aimants/dragons/) : boss fight contre 10 dragons (sources dans `dragons/`).
+[Chasseur de Dragons](https://pikifou.github.io/chasseur-dragons/) a déménagé dans son propre dépôt : https://github.com/pikifou/chasseur-dragons
