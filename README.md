@@ -18,3 +18,7 @@ Jouer : https://pikifou.github.io/tour-aimants/ (installable comme une appli, fo
 python3 build.py
 node --test tests/levels.test.js
 ```
+
+## Aussi dans ce dépôt
+
+[Chasseur de Dragons](https://pikifou.github.io/tour-aimants/dragons/) : boss fight contre 10 dragons (sources dans `dragons/`).
