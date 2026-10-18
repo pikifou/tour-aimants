@@ -18,7 +18,3 @@ Jouer : https://pikifou.github.io/tour-aimants/ (installable comme une appli, fo
 python3 build.py
 node --test tests/levels.test.js
 ```
-
-## Aussi dans ce dépôt
-
-[Chasseur de Dragons](https://pikifou.github.io/chasseur-dragons/) a déménagé dans son propre dépôt : https://github.com/pikifou/chasseur-dragons
