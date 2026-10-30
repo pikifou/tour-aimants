@@ -21,6 +21,8 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(fetch(req).then((res) => { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); return res; }).catch(() => caches.match(req)));
     return;
   }
+  // la fiche Ludiworld : toujours le réseau, jamais en cache
+  if (url.pathname.endsWith('/ludi.json')) return;
   // le reste : cache d'abord
   e.respondWith(caches.match(req, { ignoreSearch: true }).then((hit) => hit || fetch(req).then((res) => { if (res.ok && url.origin === location.origin) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); } return res; })));
 });

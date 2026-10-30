@@ -1,6 +1,6 @@
 /* Service worker : le jeu entier est mis en cache à l'installation, et joue hors ligne.
-   81ea6c55e4 est remplacé à chaque build : nouveau cache, ancien supprimé. */
-const CACHE = 'tour-aimants-81ea6c55e4';
+   9892db557c est remplacé à chaque build : nouveau cache, ancien supprimé. */
+const CACHE = 'tour-aimants-9892db557c';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png', './favicon.png',
@@ -21,6 +21,8 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(fetch(req).then((res) => { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); return res; }).catch(() => caches.match(req)));
     return;
   }
+  // la fiche Ludiworld : toujours le réseau, jamais en cache
+  if (url.pathname.endsWith('/ludi.json')) return;
   // le reste : cache d'abord
   e.respondWith(caches.match(req, { ignoreSearch: true }).then((hit) => hit || fetch(req).then((res) => { if (res.ok && url.origin === location.origin) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); } return res; })));
 });

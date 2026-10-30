@@ -12,6 +12,7 @@ Jouer : https://pikifou.github.io/tour-aimants/ (installable comme une appli, fo
 - `game.js` : rendu canvas, interface, sons, juice
 - `index.template.html` + `build.py` → `index.html` (artefact), `preview.html` (tests), `docs/` (site GitHub Pages, PWA)
 - `tests/levels.test.js` : chaque démo doit gagner sa salle (`node --test tests/levels.test.js`)
+- Ludiworld : `ludi.json` (la fiche du jeu) est copiée par le build à la racine du site ; `ludi.js` est le kit Ludiworld, copié tel quel depuis https://pikifou.github.io/ludiworld/kit/ludi.js et intégré à la page. Ouvert seul, le jeu ne change pas.
 
 ## Construire
 ```

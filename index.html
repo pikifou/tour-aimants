@@ -190,6 +190,216 @@
 <div id="rotateHint" hidden>Tourne la tablette pour jouer en grand</div>
 
 <script>
+/*!
+ * Ludiworld kit (ludi.js) v0.2.0
+ * Temps de jeu, scores, progression et notions apprises, pour les jeux Ludiworld.
+ * N'envoie rien sur le réseau. Ne parle qu'au launcher Ludiworld qui a ouvert le jeu.
+ * Spec : https://github.com/pikifou/ludiworld/blob/main/spec/kit.md
+ */
+(function () {
+  'use strict';
+
+  var VERSION = '0.2.0';
+  var DEFAULT_LAUNCHERS = ['https://pikifou.github.io'];
+  var LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+  var MAX_EVENTS = 300;
+  var FLUSH_MS = 30000;
+
+  function createLudi(win, opts) {
+    opts = opts || {};
+    var now = opts.now || function () { return Date.now(); };
+    var doc = win.document || null;
+    var st = null;
+
+    function warn(msg) { try { win.console && win.console.warn('[Ludi] ' + msg); } catch (e) { /* rien */ } }
+
+    function load(key) {
+      try { var s = win.localStorage.getItem(key); return s ? JSON.parse(s) : null; } catch (e) { return null; }
+    }
+    function save() {
+      if (!st) return;
+      try { win.localStorage.setItem(st.key, JSON.stringify(st.data)); } catch (e) { /* stockage plein ou interdit : on continue */ }
+    }
+    function emptyData() {
+      return { playMs: 0, sessions: 0, firstAt: null, lastAt: null, scores: {}, progress: {}, skills: {}, events: [] };
+    }
+
+    function allowed(origin, extra) {
+      if (!origin || origin === 'null') return false;
+      if (LOCAL_ORIGIN.test(origin)) return true;
+      return DEFAULT_LAUNCHERS.concat(extra || []).indexOf(origin) !== -1;
+    }
+
+    function findLauncher(extra) {
+      var parent;
+      try { parent = win.parent; } catch (e) { return null; }
+      if (!parent || parent === win) return null;
+      var origin = null;
+      try {
+        var ao = win.location && win.location.ancestorOrigins;
+        if (ao && ao.length) origin = ao[0];
+      } catch (e) { /* rien */ }
+      if (!origin && doc && doc.referrer) {
+        try { origin = new URL(doc.referrer).origin; } catch (e) { /* rien */ }
+      }
+      return allowed(origin, extra) ? origin : null;
+    }
+
+    function post(type, payload) {
+      if (!st || !st.launcher) return;
+      var msg = { type: type, game: st.game };
+      for (var k in payload) msg[k] = payload[k];
+      try { win.parent.postMessage(msg, st.launcher); } catch (e) { /* rien */ }
+    }
+
+    function record(ev) {
+      ev.at = now();
+      var list = st.data.events;
+      var last = list[list.length - 1];
+      if (ev.kind === 'session' && last && last.kind === 'session' && last.session === ev.session) {
+        last.ms += ev.ms; last.at = ev.at;
+      } else {
+        list.push(JSON.parse(JSON.stringify(ev)));
+        if (list.length > MAX_EVENTS) list.splice(0, list.length - MAX_EVENTS);
+      }
+      st.data.lastAt = ev.at;
+      save();
+      post('ludi:event', { event: ev });
+    }
+
+    // Temps de jeu : ne compte que quand la page est visible.
+    function visible() { return !doc || doc.visibilityState !== 'hidden'; }
+    function flush() {
+      if (!st || st.activeSince === null) return;
+      var t = now();
+      var ms = Math.max(0, Math.min(t - st.activeSince, FLUSH_MS * 4));
+      st.activeSince = visible() ? t : null;
+      if (ms < 250) return;
+      st.data.playMs += ms;
+      record({ kind: 'session', session: st.sessionId, ms: ms });
+    }
+    function onVisibility() {
+      if (!st) return;
+      if (visible()) { if (st.activeSince === null) st.activeSince = now(); }
+      else flush();
+    }
+
+    function onMessage(e) {
+      if (!st || !st.launcher || e.origin !== st.launcher || e.source !== win.parent) return;
+      var m = e.data;
+      if (!m || typeof m !== 'object') return;
+      if (m.type === 'ludi:welcome') {
+        var name = m.player && typeof m.player.name === 'string' ? m.player.name.slice(0, 40) : null;
+        st.player = name ? { name: name } : null;
+      } else if (m.type === 'ludi:pause') {
+        flush();
+        st.pauseFns.forEach(function (fn) { try { fn(m.reason || null); } catch (err) { warn(err); } });
+      } else if (m.type === 'ludi:wrapup') {
+        var min = Number(m.minutes);
+        st.wrapFns.forEach(function (fn) { try { fn(isFinite(min) ? min : null); } catch (err) { warn(err); } });
+      }
+    }
+
+    function ready(fnName) {
+      if (!st) { warn(fnName + ' appelé avant Ludi.init()'); return false; }
+      return true;
+    }
+
+    var api = {
+      version: VERSION,
+
+      init: function (o) {
+        o = o || {};
+        var game = String(o.game || '').trim();
+        if (!/^[a-z0-9][a-z0-9-]{0,60}$/.test(game)) { warn('init : "game" doit être l\'id de la fiche (minuscules et tirets)'); return api; }
+        if (st) { if (st.game !== game) warn('init déjà fait pour ' + st.game); return api; }
+        var key = 'ludi.v1.' + game;
+        var data = load(key) || emptyData();
+        var t = now();
+        st = {
+          game: game, key: key, data: data, player: null, pauseFns: [], wrapFns: [],
+          launcher: findLauncher(o.launchers),
+          sessionId: t, activeSince: visible() ? t : null
+        };
+        data.sessions += 1;
+        if (!data.firstAt) data.firstAt = t;
+        data.lastAt = t;
+        save();
+        if (win.addEventListener) {
+          win.addEventListener('message', onMessage);
+          win.addEventListener('pagehide', flush);
+        }
+        if (doc && doc.addEventListener) doc.addEventListener('visibilitychange', onVisibility);
+        if (win.setInterval) st.timer = win.setInterval(flush, FLUSH_MS);
+        post('ludi:hello', { kit: VERSION });
+        return api;
+      },
+
+      score: function (key, value, o) {
+        if (!ready('score')) return null;
+        value = Number(value);
+        if (!key || !isFinite(value)) { warn('score : clé ou valeur invalide'); return null; }
+        var better = o && o.better === 'lower' ? 'lower' : 'higher';
+        var prev = st.data.scores[key];
+        var isRecord = !prev || (better === 'lower' ? value < prev.value : value > prev.value);
+        if (isRecord) st.data.scores[key] = { value: value, better: better, at: now() };
+        record({ kind: 'score', key: String(key), value: value, better: better, record: isRecord });
+        return { best: st.data.scores[key].value, record: isRecord };
+      },
+
+      progress: function (key, value) {
+        if (!ready('progress')) return;
+        if (!key) { warn('progress : clé manquante'); return; }
+        st.data.progress[key] = { value: value, at: now() };
+        record({ kind: 'progress', key: String(key), value: value });
+      },
+
+      skill: function (domain, item, success) {
+        if (!ready('skill')) return;
+        if (!domain) { warn('skill : domaine manquant'); return; }
+        var id = String(domain) + (item !== undefined && item !== null ? '/' + item : '');
+        var s = st.data.skills[id] || { ok: 0, ko: 0, streak: 0 };
+        if (success) { s.ok += 1; s.streak = Math.max(1, s.streak + 1); }
+        else { s.ko += 1; s.streak = Math.min(-1, s.streak - 1); }
+        s.at = now();
+        st.data.skills[id] = s;
+        record({ kind: 'skill', domain: String(domain), item: item === undefined ? null : item, success: !!success });
+      },
+
+      // Moment où l'enfant peut s'arrêter sans rien perdre (fin de niveau, de course, de série).
+      // Le launcher s'en sert pour fermer le jeu en douceur quand le temps du jour est écoulé.
+      checkpoint: function (label) {
+        if (!ready('checkpoint')) return;
+        record({ kind: 'checkpoint', label: label === undefined || label === null ? null : String(label).slice(0, 60) });
+      },
+
+      player: function () { return st && st.player ? { name: st.player.name } : null; },
+
+      data: function () {
+        if (!st) return null;
+        flush();
+        return JSON.parse(JSON.stringify(st.data));
+      },
+
+      onPause: function (fn) { if (ready('onPause') && typeof fn === 'function') st.pauseFns.push(fn); },
+
+      // Le launcher prévient que le temps de jeu touche à sa fin : le jeu peut inviter à finir la manche.
+      onWrapUp: function (fn) { if (ready('onWrapUp') && typeof fn === 'function') st.wrapFns.push(fn); },
+
+      inLauncher: function () { return !!(st && st.launcher); },
+
+      // Pour les tests : force l'enregistrement du temps de jeu en cours.
+      _flush: function () { flush(); }
+    };
+    return api;
+  }
+
+  if (typeof window !== 'undefined' && !window.Ludi) window.Ludi = createLudi(window);
+  if (typeof module !== 'undefined' && module.exports) module.exports = { createLudi: createLudi, VERSION: VERSION };
+})();
+
+</script>
+<script>
 /* Moteur du jeu « La Tour aux Aimants » : physique magnétique 2D, sans DOM.
    Fonctionne dans le navigateur (window.Engine) et dans Node (module.exports) pour les tests. */
 (function (root) {
@@ -1599,6 +1809,30 @@
   try { const p = JSON.parse(localStorage.getItem(KEY) || 'null'); if (p && p.floor) progress = Object.assign({ room: 0, done: [] }, p); } catch (e) { /* stockage indisponible */ }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(progress)); } catch (e) { /* ignore */ } }
 
+  // ---------- Ludiworld (kit ludi.js) ----------
+  // Sans le kit, ou ouvert seul, rien ne change. Ouvert depuis le launcher Ludiworld, chaque salle réussie lui remonte :
+  // un point d'arrêt (la « fin douce » attend la fin de la salle au lieu de couper au milieu), la progression et la notion travaillée.
+  const LUDI = window.Ludi ? window.Ludi.init({ game: 'tour-aimants' }) : null;
+  const DANS_LUDI = !!(LUDI && LUDI.inLauncher());
+  // Une notion par étage (la fiche de cards.js) ; les étages 15 et 16 mélangent tout, ils ne comptent pour aucune notion.
+  const NOTIONS = ['aimant', 'attire-ou-pas', 'a-travers', 'epee', 'poles', 'portee', 'fer-a-cheval', 'chaine',
+    'bouclier', 'clou-aimante', 'electroaimant', 'bobine', 'boussole', 'pole-cache', null, null];
+  let ludiAide = false;   // « Montre-moi » utilisé dans cette salle
+  let ludiSalleMax = 0;
+  if (LUDI) { const d = LUDI.data(), p = d && d.progress.salle; ludiSalleMax = p ? p.value : 0; }
+  function ludiSalleFinie(r, f, quoi) {
+    if (!LUDI) return;
+    // salle réussie seul = juste ; après « Montre-moi » = la notion n'est pas encore acquise. L'atelier (démo d'abord) ne compte pas.
+    if (r.kind === 'salle' && NOTIONS[f.n - 1]) LUDI.skill('sciences.magnetisme', NOTIONS[f.n - 1], !ludiAide);
+    // plus haute salle atteinte (1 à 100) et son étage : on peut rejouer un étage déjà fait, d'où le max
+    let s = FLOORS[progress.floor - 1].firstStep + progress.room;
+    for (const n of progress.done) s = Math.max(s, FLOORS[n - 1].firstStep + FLOORS[n - 1].rooms.length);
+    s = ludiSalleMax = Math.min(STEPS, Math.max(s, ludiSalleMax));
+    LUDI.progress('salle', s);
+    LUDI.progress('etage', FLOORS.find((x) => s < x.firstStep + x.rooms.length).n);
+    LUDI.checkpoint(quoi);
+  }
+
   // ---------- audio ----------
   let actx = null;
   function ac() { try { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); return actx; } catch (e) { return null; } }
@@ -1828,6 +2062,17 @@
     dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = Math.round(W * s * dpr); canvas.height = Math.round(H * s * dpr);
     ctx.setTransform(s * dpr, 0, 0, s * dpr, 0, 0);
+    if (DANS_LUDI) ludiDegager();
+  }
+  // Dans Ludiworld, le bouton « ← Ludiworld » du launcher occupe le coin haut gauche de l'écran (à 8 px du bord, environ 117 × 34 px) :
+  // le texte du bandeau du haut (marche, étage) se pousse à sa droite. Les autres écrans sont centrés, rien à faire. Ouvert seul, rien ne bouge.
+  function ludiDegager() {
+    const hud = $('#hud');
+    const pad = !L.rot && L.Y < 50 ? Math.ceil((135 - L.X) / L.s) : 0;
+    hud.style.paddingLeft = Math.max(16, pad) + 'px';
+    // salle très chargée (beaucoup d'outils) : les boutons passent avant, on rend juste la place qui manque
+    const trop = hud.scrollWidth - hud.clientWidth;
+    if (trop > 0) hud.style.paddingLeft = Math.max(16, pad - trop) + 'px';
   }
   window.addEventListener('resize', layout);
   window.addEventListener('orientationchange', () => setTimeout(layout, 50));
@@ -1840,7 +2085,7 @@
     $('#hudTitle').textContent = `Étage ${n} · ${floor.title}`;
     renderDots();
     buildHud();
-    $('#hint').hidden = true; hintCount = 0;
+    $('#hint').hidden = true; hintCount = 0; ludiAide = false;
     show('game'); layout();
     banner(roomName(room), room.kind === 'atelier' ? 'Regarde, puis à toi.' : room.hint, 3.2);
     if (room.kind === 'atelier') startDemo('loop');
@@ -1878,6 +2123,7 @@
     fil.className = world.filings ? 'on' : '';
     $('#gauge').hidden = !(t && (t.type === 'nail' || room.turnsNeeded));
     $('#btnShow').hidden = !(room.kind !== 'atelier' && hintCount >= 1);
+    if (DANS_LUDI) ludiDegager();
   }
   // Boutons du jeu : réagissent dès que le doigt se pose (pointerdown), même si un autre doigt tient déjà le bonhomme.
   // Un tap tactile à deux doigts ne génère souvent pas de « click » : on ne s'appuie donc pas dessus.
@@ -1897,7 +2143,7 @@
   tap($('#btnFilings'), () => { takeControl(); world.toggleFilings(); buildHud(); });
   tap($('#btnRestart'), () => { resetWorld(); buildHud(); if (room.kind === 'atelier') startDemo('loop'); });
   tap($('#btnHint'), () => { showHint(); hintCount++; buildHud(); });
-  tap($('#btnShow'), () => { resetWorld(); buildHud(); startDemo('once'); });
+  tap($('#btnShow'), () => { ludiAide = true; resetWorld(); buildHud(); startDemo('once'); });
   tap($('#btnTower'), () => { show('tower'); renderTower(); });
   function showHint() { $('#hintText').textContent = fr(room.hint); $('#hint').hidden = false; hintUntil = performance.now() + 7000; }
   $('#hint').onclick = () => { $('#hint').hidden = true; };
@@ -1926,6 +2172,7 @@
   let gripOffset = GRIP;
   canvas.addEventListener('pointerdown', (e) => {
     if (!world) return;
+    if (ludiFige) { ludiFige = false; if (current === 'game' && !raf) { lastT = performance.now(); raf = requestAnimationFrame(loop); } }
     unlockAudio();
     if (demo) { takeControl(); }
     if (world.won) return;
@@ -1950,6 +2197,15 @@
   canvas.addEventListener('pointermove', (e) => { if (!world || e.pointerId !== activePointer) return; const p = toLogical(e); world.pointerMove(p.x, p.y - gripOffset); });
   const up = (e) => { if (!world || e.pointerId !== activePointer) return; activePointer = null; world.pointerUp(); };
   canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
+  // Le launcher Ludiworld demande une pause (temps de jeu écoulé) : on lâche l'aimant, on se tait et la salle se fige.
+  // Un nouveau toucher sur la salle la relance.
+  let ludiFige = false;
+  if (LUDI) LUDI.onPause(() => {
+    try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) { /* ignore */ }
+    if (current !== 'game' || !world) return;
+    if (activePointer !== null) { activePointer = null; world.pointerUp(); }
+    stopLoop(); ludiFige = true;
+  });
 
   // ---------- boucle ----------
   function loop(t) {
@@ -2047,6 +2303,7 @@
     const last = room.index >= floor.rooms.length - 1;
     if (!last) {
       progress.floor = floor.n; progress.room = room.index + 1; save();
+      ludiSalleFinie(room, floor, room.kind === 'atelier' ? 'atelier' : 'salle');
       SFX.room();
       startRoom(floor.n, room.index + 1);
       return;
@@ -2054,6 +2311,7 @@
     if (!progress.done.includes(floor.n)) progress.done.push(floor.n);
     if (floor.n >= progress.floor) { progress.floor = Math.min(TOTAL, floor.n + 1); progress.room = 0; }
     save();
+    ludiSalleFinie(room, floor, floor.final ? 'tour' : 'etage');
     if (floor.final) { stopLoop(); showEnd(); return; }
     startFlight();
   }

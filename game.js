@@ -19,6 +19,30 @@
   try { const p = JSON.parse(localStorage.getItem(KEY) || 'null'); if (p && p.floor) progress = Object.assign({ room: 0, done: [] }, p); } catch (e) { /* stockage indisponible */ }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(progress)); } catch (e) { /* ignore */ } }
 
+  // ---------- Ludiworld (kit ludi.js) ----------
+  // Sans le kit, ou ouvert seul, rien ne change. Ouvert depuis le launcher Ludiworld, chaque salle réussie lui remonte :
+  // un point d'arrêt (la « fin douce » attend la fin de la salle au lieu de couper au milieu), la progression et la notion travaillée.
+  const LUDI = window.Ludi ? window.Ludi.init({ game: 'tour-aimants' }) : null;
+  const DANS_LUDI = !!(LUDI && LUDI.inLauncher());
+  // Une notion par étage (la fiche de cards.js) ; les étages 15 et 16 mélangent tout, ils ne comptent pour aucune notion.
+  const NOTIONS = ['aimant', 'attire-ou-pas', 'a-travers', 'epee', 'poles', 'portee', 'fer-a-cheval', 'chaine',
+    'bouclier', 'clou-aimante', 'electroaimant', 'bobine', 'boussole', 'pole-cache', null, null];
+  let ludiAide = false;   // « Montre-moi » utilisé dans cette salle
+  let ludiSalleMax = 0;
+  if (LUDI) { const d = LUDI.data(), p = d && d.progress.salle; ludiSalleMax = p ? p.value : 0; }
+  function ludiSalleFinie(r, f, quoi) {
+    if (!LUDI) return;
+    // salle réussie seul = juste ; après « Montre-moi » = la notion n'est pas encore acquise. L'atelier (démo d'abord) ne compte pas.
+    if (r.kind === 'salle' && NOTIONS[f.n - 1]) LUDI.skill('sciences.magnetisme', NOTIONS[f.n - 1], !ludiAide);
+    // plus haute salle atteinte (1 à 100) et son étage : on peut rejouer un étage déjà fait, d'où le max
+    let s = FLOORS[progress.floor - 1].firstStep + progress.room;
+    for (const n of progress.done) s = Math.max(s, FLOORS[n - 1].firstStep + FLOORS[n - 1].rooms.length);
+    s = ludiSalleMax = Math.min(STEPS, Math.max(s, ludiSalleMax));
+    LUDI.progress('salle', s);
+    LUDI.progress('etage', FLOORS.find((x) => s < x.firstStep + x.rooms.length).n);
+    LUDI.checkpoint(quoi);
+  }
+
   // ---------- audio ----------
   let actx = null;
   function ac() { try { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); return actx; } catch (e) { return null; } }
@@ -248,6 +272,17 @@
     dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = Math.round(W * s * dpr); canvas.height = Math.round(H * s * dpr);
     ctx.setTransform(s * dpr, 0, 0, s * dpr, 0, 0);
+    if (DANS_LUDI) ludiDegager();
+  }
+  // Dans Ludiworld, le bouton « ← Ludiworld » du launcher occupe le coin haut gauche de l'écran (à 8 px du bord, environ 117 × 34 px) :
+  // le texte du bandeau du haut (marche, étage) se pousse à sa droite. Les autres écrans sont centrés, rien à faire. Ouvert seul, rien ne bouge.
+  function ludiDegager() {
+    const hud = $('#hud');
+    const pad = !L.rot && L.Y < 50 ? Math.ceil((135 - L.X) / L.s) : 0;
+    hud.style.paddingLeft = Math.max(16, pad) + 'px';
+    // salle très chargée (beaucoup d'outils) : les boutons passent avant, on rend juste la place qui manque
+    const trop = hud.scrollWidth - hud.clientWidth;
+    if (trop > 0) hud.style.paddingLeft = Math.max(16, pad - trop) + 'px';
   }
   window.addEventListener('resize', layout);
   window.addEventListener('orientationchange', () => setTimeout(layout, 50));
@@ -260,7 +295,7 @@
     $('#hudTitle').textContent = `Étage ${n} · ${floor.title}`;
     renderDots();
     buildHud();
-    $('#hint').hidden = true; hintCount = 0;
+    $('#hint').hidden = true; hintCount = 0; ludiAide = false;
     show('game'); layout();
     banner(roomName(room), room.kind === 'atelier' ? 'Regarde, puis à toi.' : room.hint, 3.2);
     if (room.kind === 'atelier') startDemo('loop');
@@ -298,6 +333,7 @@
     fil.className = world.filings ? 'on' : '';
     $('#gauge').hidden = !(t && (t.type === 'nail' || room.turnsNeeded));
     $('#btnShow').hidden = !(room.kind !== 'atelier' && hintCount >= 1);
+    if (DANS_LUDI) ludiDegager();
   }
   // Boutons du jeu : réagissent dès que le doigt se pose (pointerdown), même si un autre doigt tient déjà le bonhomme.
   // Un tap tactile à deux doigts ne génère souvent pas de « click » : on ne s'appuie donc pas dessus.
@@ -317,7 +353,7 @@
   tap($('#btnFilings'), () => { takeControl(); world.toggleFilings(); buildHud(); });
   tap($('#btnRestart'), () => { resetWorld(); buildHud(); if (room.kind === 'atelier') startDemo('loop'); });
   tap($('#btnHint'), () => { showHint(); hintCount++; buildHud(); });
-  tap($('#btnShow'), () => { resetWorld(); buildHud(); startDemo('once'); });
+  tap($('#btnShow'), () => { ludiAide = true; resetWorld(); buildHud(); startDemo('once'); });
   tap($('#btnTower'), () => { show('tower'); renderTower(); });
   function showHint() { $('#hintText').textContent = fr(room.hint); $('#hint').hidden = false; hintUntil = performance.now() + 7000; }
   $('#hint').onclick = () => { $('#hint').hidden = true; };
@@ -346,6 +382,7 @@
   let gripOffset = GRIP;
   canvas.addEventListener('pointerdown', (e) => {
     if (!world) return;
+    if (ludiFige) { ludiFige = false; if (current === 'game' && !raf) { lastT = performance.now(); raf = requestAnimationFrame(loop); } }
     unlockAudio();
     if (demo) { takeControl(); }
     if (world.won) return;
@@ -370,6 +407,15 @@
   canvas.addEventListener('pointermove', (e) => { if (!world || e.pointerId !== activePointer) return; const p = toLogical(e); world.pointerMove(p.x, p.y - gripOffset); });
   const up = (e) => { if (!world || e.pointerId !== activePointer) return; activePointer = null; world.pointerUp(); };
   canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
+  // Le launcher Ludiworld demande une pause (temps de jeu écoulé) : on lâche l'aimant, on se tait et la salle se fige.
+  // Un nouveau toucher sur la salle la relance.
+  let ludiFige = false;
+  if (LUDI) LUDI.onPause(() => {
+    try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) { /* ignore */ }
+    if (current !== 'game' || !world) return;
+    if (activePointer !== null) { activePointer = null; world.pointerUp(); }
+    stopLoop(); ludiFige = true;
+  });
 
   // ---------- boucle ----------
   function loop(t) {
@@ -467,6 +513,7 @@
     const last = room.index >= floor.rooms.length - 1;
     if (!last) {
       progress.floor = floor.n; progress.room = room.index + 1; save();
+      ludiSalleFinie(room, floor, room.kind === 'atelier' ? 'atelier' : 'salle');
       SFX.room();
       startRoom(floor.n, room.index + 1);
       return;
@@ -474,6 +521,7 @@
     if (!progress.done.includes(floor.n)) progress.done.push(floor.n);
     if (floor.n >= progress.floor) { progress.floor = Math.min(TOTAL, floor.n + 1); progress.room = 0; }
     save();
+    ludiSalleFinie(room, floor, floor.final ? 'tour' : 'etage');
     if (floor.final) { stopLoop(); showEnd(); return; }
     startFlight();
   }

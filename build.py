@@ -44,4 +44,6 @@ version = hashlib.sha1((page + ''.join(assets)).encode('utf-8')).hexdigest()[:10
 sw = (root / 'pwa' / 'sw.js').read_text(encoding='utf-8').replace('__VERSION__', version).replace('__ASSETS__', ', '.join(json.dumps('./assets/' + a) for a in assets))
 (dist / 'sw.js').write_text(sw, encoding='utf-8')
 (dist / '.nojekyll').write_text('')
+# fiche Ludiworld, à la racine du site publié (hors du cache du service worker : toujours fraîche)
+shutil.copy(root / 'ludi.json', dist / 'ludi.json')
 print('index.html', len(html.encode('utf-8')), 'bytes; dist version', version)

@@ -1,0 +1,43 @@
+{
+  "ludi": 1,
+  "id": "tour-aimants",
+  "status": "draft",
+  "title": { "fr": "La Tour aux Aimants", "en": "The Magnet Tower" },
+  "pitch": {
+    "fr": "Une sorcière a enfermé le chat en haut de sa tour. Avec un aimant, attire les chevaliers dans les trous, ouvre les verrous et lâche les épées pour monter les 100 salles.",
+    "en": "A witch has locked the cat at the top of her tower. With a magnet, pull knights into pits, open locks and drop swords to climb 100 rooms."
+  },
+  "url": "https://pikifou.github.io/tour-aimants/",
+  "icon": "https://pikifou.github.io/tour-aimants/icon-512.png",
+  "color": "#1b1430",
+  "author": { "name": "Julien", "url": "https://github.com/pikifou/tour-aimants" },
+  "languages": ["fr"],
+  "age": { "min": 6, "max": 10 },
+  "reading": "some",
+  "learning": {
+    "level": "core",
+    "domains": ["sciences.magnetisme", "logique.puzzle"],
+    "what": {
+      "fr": "Ce qu'un aimant attire ou non, les pôles nord et sud qui s'attirent ou se repoussent, l'électroaimant, et l'idée qu'un obstacle peut bloquer l'attraction.",
+      "en": "What a magnet attracts or not, north and south poles that attract or repel, the electromagnet, and how an obstacle can block attraction."
+    },
+    "how": {
+      "fr": "Une notion par étage, montrée dans un atelier avec une démo, puis réutilisée dans des salles de plus en plus difficiles qui mélangent les notions. Un bouton « Montre-moi » rejoue la solution.",
+      "en": "One idea per floor, shown in a workshop with a demo, then reused in harder rooms that combine ideas. A \"Show me\" button replays the solution."
+    }
+  },
+  "session": { "minutes": [10, 20], "natural_end": true, "total_hours": 5 },
+  "content": {
+    "fr": "Une sorcière maligne et des chevaliers assommés (yeux en spirale), sans violence réaliste.",
+    "en": "A mischievous witch and knocked-out knights (spiral eyes), no realistic violence."
+  },
+  "devices": ["phone", "tablet"],
+  "offline": true,
+  "healthy": {
+    "no_ads": true, "no_purchases": true, "no_subscription": true, "no_loot_boxes": true,
+    "no_daily_pressure": true, "no_notifications": true, "no_strangers": true, "no_tracking": true,
+    "natural_stops": true
+  },
+  "third_parties": ["fonts.googleapis.com"],
+  "kit": true
+}
