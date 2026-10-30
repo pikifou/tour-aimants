@@ -1908,6 +1908,7 @@
   const canFullscreen = !!(docEl.requestFullscreen || docEl.webkitRequestFullscreen);
   function isFullscreen() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
   function toggleFullscreen() {
+    if (DANS_LUDI) return;
     try {
       if (isFullscreen()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
       const p = (docEl.requestFullscreen || docEl.webkitRequestFullscreen).call(docEl, { navigationUI: 'hide' });
@@ -1919,7 +1920,7 @@
     const on = isFullscreen();
     for (const id of ['#btnFull', '#btnFullHud']) {
       const b = $(id); if (!b) continue;
-      b.hidden = STANDALONE || !canFullscreen;
+      b.hidden = STANDALONE || !canFullscreen || DANS_LUDI; // dans Ludiworld, c'est Ludiworld qui décide du plein écran
       if (id === '#btnFull') b.textContent = on ? '⛶ Quitter le plein écran' : '⛶ Plein écran';
       else b.textContent = on ? '⛶' : '⛶';
     }

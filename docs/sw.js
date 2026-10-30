@@ -1,6 +1,6 @@
 /* Service worker : le jeu entier est mis en cache à l'installation, et joue hors ligne.
-   9892db557c est remplacé à chaque build : nouveau cache, ancien supprimé. */
-const CACHE = 'tour-aimants-9892db557c';
+   13a4bd3937 est remplacé à chaque build : nouveau cache, ancien supprimé. */
+const CACHE = 'tour-aimants-13a4bd3937';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png', './favicon.png',
