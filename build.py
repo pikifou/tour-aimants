@@ -40,7 +40,11 @@ for f in ['manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable
     shutil.copy(root / 'pwa' / f, dist / f)
 page = HEAD + PWA + f'<title>{title}</title></head><body>' + body_no_title + '</body></html>'
 (dist / 'index.html').write_text(page, encoding='utf-8')
-version = hashlib.sha1((page + ''.join(assets)).encode('utf-8')).hexdigest()[:10]
+digest = hashlib.sha1(page.encode('utf-8'))
+for name in assets:
+    digest.update(name.encode('utf-8'))
+    digest.update((root / 'assets' / name).read_bytes())
+version = digest.hexdigest()[:10]
 sw = (root / 'pwa' / 'sw.js').read_text(encoding='utf-8').replace('__VERSION__', version).replace('__ASSETS__', ', '.join(json.dumps('./assets/' + a) for a in assets))
 (dist / 'sw.js').write_text(sw, encoding='utf-8')
 (dist / '.nojekyll').write_text('')
