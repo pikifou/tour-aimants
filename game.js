@@ -19,13 +19,27 @@
   const KEY = 'tour-aimants-v2';
   let progress = { floor: 1, room: 0, done: [] };
   try { const p = JSON.parse(localStorage.getItem(KEY) || 'null'); if (p && p.floor) progress = Object.assign({ room: 0, done: [] }, p); } catch (e) { /* stockage indisponible */ }
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(progress)); } catch (e) { /* ignore */ } }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(progress)); } catch (e) { /* ignore */ }
+    // Ludiworld garde aussi la progression dans le compte du parent (copie en ligne) ; sans lui, rien ne change.
+    try { if (window.Ludi) window.Ludi.save(progress); } catch (e) { /* ignore */ }
+  }
 
   // ---------- Ludiworld (kit ludi.js) ----------
   // Sans le kit, ou ouvert seul, rien ne change. Ouvert depuis le launcher Ludiworld, chaque salle réussie lui remonte :
   // un point d'arrêt (la « fin douce » attend la fin de la salle au lieu de couper au milieu), la progression et la notion travaillée.
   const LUDI = window.Ludi ? window.Ludi.init({ game: 'tour-aimants' }) : null;
   const DANS_LUDI = !!(LUDI && LUDI.inLauncher());
+  // Une progression plus récente venue d'un autre appareil : on la range comme la nôtre et on recharge.
+  if (LUDI) LUDI.onRestore(function (d) {
+    try {
+      if (!d || !d.floor || !Array.isArray(d.done)) return;
+      localStorage.setItem(KEY, JSON.stringify(Object.assign({ room: 0, done: [] }, d)));
+      location.reload();
+    } catch (e) { /* ignore */ }
+  });
+  // Une partie commencée avant ce changement : on la confie aussi à Ludiworld (sans écraser une plus récente venue d'ailleurs).
+  try { if (LUDI && localStorage.getItem(KEY)) LUDI.save(progress, { existante: true }); } catch (e) { /* ignore */ }
   // Une notion par étage (la fiche de cards.js) ; les étages 15 et 16 mélangent tout, ils ne comptent pour aucune notion.
   const NOTIONS = ['aimant', 'attire-ou-pas', 'a-travers', 'epee', 'poles', 'portee', 'fer-a-cheval', 'chaine',
     'bouclier', 'clou-aimante', 'electroaimant', 'bobine', 'boussole', 'pole-cache', null, null];

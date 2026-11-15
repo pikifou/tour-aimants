@@ -1,5 +1,5 @@
 /*!
- * Ludiworld kit (ludi.js) v0.2.0
+ * Ludiworld kit (ludi.js) v0.3.0
  * Temps de jeu, scores, progression et notions apprises, pour les jeux Ludiworld.
  * N'envoie rien sur le réseau. Ne parle qu'au launcher Ludiworld qui a ouvert le jeu.
  * Spec : https://github.com/pikifou/ludiworld/blob/main/spec/kit.md
@@ -7,11 +7,12 @@
 (function () {
   'use strict';
 
-  var VERSION = '0.2.0';
-  var DEFAULT_LAUNCHERS = ['https://pikifou.github.io'];
+  var VERSION = '0.3.0';
+  var DEFAULT_LAUNCHERS = ['https://ludiworld.app', 'https://pikifou.github.io'];
   var LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
   var MAX_EVENTS = 300;
   var FLUSH_MS = 30000;
+  var MAX_SAVE = 250000; // taille maximale d'une sauvegarde (texte JSON)
 
   function createLudi(win, opts) {
     opts = opts || {};
@@ -99,12 +100,37 @@
       if (m.type === 'ludi:welcome') {
         var name = m.player && typeof m.player.name === 'string' ? m.player.name.slice(0, 40) : null;
         st.player = name ? { name: name } : null;
+        receiveSave(m.save);
       } else if (m.type === 'ludi:pause') {
         flush();
         st.pauseFns.forEach(function (fn) { try { fn(m.reason || null); } catch (err) { warn(err); } });
       } else if (m.type === 'ludi:wrapup') {
         var min = Number(m.minutes);
         st.wrapFns.forEach(function (fn) { try { fn(isFinite(min) ? min : null); } catch (err) { warn(err); } });
+      }
+    }
+
+    // Sauvegarde du jeu, gardée par Ludiworld dans le compte du parent : voir Ludi.save et Ludi.onRestore.
+    function validSave(sv) {
+      return !!(sv && typeof sv === 'object' && isFinite(Number(sv.at)) && sv.data !== undefined && sv.data !== null);
+    }
+    function saveSize(data) { try { return JSON.stringify(data).length; } catch (e) { return Infinity; } }
+    function restoreNow(fn, data) { try { fn(JSON.parse(JSON.stringify(data))); } catch (err) { warn(err); } }
+    // Le launcher donne la sauvegarde qu'il garde pour cet enfant. Plus récente que celle de cet appareil : on la rend au jeu.
+    // Absente alors que cet appareil en a une : on la lui confie (première fois, ou appareil qui reprend le fil).
+    function receiveSave(remote) {
+      var local = st.data.save;
+      if (validSave(remote) && saveSize(remote.data) <= MAX_SAVE) {
+        if (!validSave(local) || Number(remote.at) > Number(local.at)) {
+          st.data.save = { data: remote.data, at: Number(remote.at) };
+          save();
+          st.pending = st.data.save.data;
+          if (st.restoreFns.length) { var d = st.pending; st.pending = null; st.restoreFns.forEach(function (fn) { restoreNow(fn, d); }); }
+        } else if (Number(remote.at) < Number(local.at)) {
+          post('ludi:event', { event: { kind: 'save', data: local.data, at: local.at } });
+        }
+      } else if (validSave(local)) {
+        post('ludi:event', { event: { kind: 'save', data: local.data, at: local.at } });
       }
     }
 
@@ -125,7 +151,7 @@
         var data = load(key) || emptyData();
         var t = now();
         st = {
-          game: game, key: key, data: data, player: null, pauseFns: [], wrapFns: [],
+          game: game, key: key, data: data, player: null, pauseFns: [], wrapFns: [], restoreFns: [], pending: null,
           launcher: findLauncher(o.launchers),
           sessionId: t, activeSince: visible() ? t : null
         };
@@ -179,6 +205,33 @@
       checkpoint: function (label) {
         if (!ready('checkpoint')) return;
         record({ kind: 'checkpoint', label: label === undefined || label === null ? null : String(label).slice(0, 60) });
+      },
+
+      // Sauvegarde complète du jeu (n'importe quoi qui passe par JSON, 250 000 caractères au plus) : étage, village, leçons faites.
+      // Ludiworld la garde dans le compte du parent si la copie en ligne est active, pour que l'enfant reprenne sur un autre appareil.
+      // À appeler quand le jeu enregistre sa propre sauvegarde. Garde la dernière. Renvoie true si elle est gardée.
+      // Option { existante: true } : à l'ouverture, pour confier à Ludiworld une sauvegarde qui date d'avant le kit. Elle est
+      // alors réputée très ancienne : si Ludiworld en a déjà une, c'est la sienne qui revient ; sinon il garde celle-ci.
+      save: function (data, o) {
+        if (!ready('save')) return false;
+        if (o && o.existante && st.data.save) return false;
+        if (data === undefined || data === null) { warn('save : rien à garder'); return false; }
+        if (saveSize(data) > MAX_SAVE) { warn('save : sauvegarde trop grosse (' + MAX_SAVE + ' caractères au plus)'); return false; }
+        var copy = JSON.parse(JSON.stringify(data));
+        var at = o && o.existante ? 1 : Math.max(now(), st.data.save ? Number(st.data.save.at) + 1 : 0);
+        st.data.save = { data: copy, at: at };
+        save();
+        post('ludi:event', { event: { kind: 'save', data: copy, at: at } });
+        return true;
+      },
+
+      // Le jeu s'abonne pour recevoir une sauvegarde venue d'un autre appareil : fn(data), appelée au plus une fois par ouverture,
+      // seulement si la sauvegarde de Ludiworld est plus récente que celle de cet appareil. Le jeu la range comme la sienne
+      // (et se redessine, ou recharge sa page) ; il n'a rien d'autre à faire. Appelée aussitôt si elle est déjà arrivée.
+      onRestore: function (fn) {
+        if (!ready('onRestore') || typeof fn !== 'function') return;
+        st.restoreFns.push(fn);
+        if (st.pending) { var d = st.pending; st.pending = null; restoreNow(fn, d); }
       },
 
       player: function () { return st && st.player ? { name: st.player.name } : null; },
