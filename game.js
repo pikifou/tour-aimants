@@ -40,6 +40,9 @@
   });
   // Une partie commencée avant ce changement : on la confie aussi à Ludiworld (sans écraser une plus récente venue d'ailleurs).
   try { if (LUDI && localStorage.getItem(KEY)) LUDI.save(progress, { existante: true }); } catch (e) { /* ignore */ }
+  // La tour est finie quand Mei Mei est délivrée (étage 16) : ça ne s'enlève plus, même si on recommence la tour.
+  if (progress.done.includes(FLOORS.length)) progress.fini = true;
+  if (LUDI && progress.fini) LUDI.fini();
   // Une notion par étage (la fiche de cards.js) ; les étages 15 et 16 mélangent tout, ils ne comptent pour aucune notion.
   const NOTIONS = ['aimant', 'attire-ou-pas', 'a-travers', 'epee', 'poles', 'portee', 'fer-a-cheval', 'chaine',
     'bouclier', 'clou-aimante', 'electroaimant', 'bobine', 'boussole', 'pole-cache', null, null];
@@ -184,14 +187,64 @@
     $('#btnInstall').onclick = install;
     $('#iosHint').hidden = !(IOS && !STANDALONE && location.protocol === 'https:' && !/claude/.test(location.hostname));
     updateFullscreenButtons();
-    $('#btnPlay').onclick = () => { unlockAudio(); show('tower'); renderTower(); };
-    $('#btnReset').onclick = () => { progress = { floor: 1, room: 0, done: [] }; save(); renderTitle(); };
+    $('#btnPlay').onclick = () => {
+      unlockAudio();
+      const neuve = !progress.done.length && !progress.room && progress.floor === 1;
+      // une partie qui commence : d'abord l'histoire (la sorcière emporte Mei Mei), puis la tour
+      if (neuve) cinematique('intro', () => { show('tower'); renderTower(); });
+      else { show('tower'); renderTower(); }
+    };
+    $('#btnReset').onclick = () => { progress = { floor: 1, room: 0, done: [], fini: !!progress.fini }; save(); renderTitle(); };
     $('#btnIntroRead').onclick = () => speak(INTRO.lines.join(' '));
     renderTitle();
   }
   function renderTitle() {
     $('#btnPlay').textContent = progress.done.length || progress.room ? `Continuer (étage ${progress.floor})` : 'Jouer';
     $('#btnReset').hidden = !(progress.done.length || progress.room);
+    $('#fini').hidden = !progress.fini;
+    $('#finiTxt').textContent = HISTOIRE[LANG].fini;
+  }
+
+  // ---------- histoire : une intro au premier départ, une fin quand Mei Mei est libre ----------
+  // Une petite vidéo si elle est là (version installée et aperçu), sinon directement l'image et le texte
+  // (fichier unique, hors ligne, mouvement réduit). « Passer » saute à l'image et au texte.
+  const LANG = /^en/i.test(new URLSearchParams(location.search).get('lang') || document.documentElement.lang || '') ? 'en' : 'fr';
+  const HISTOIRE = {
+    fr: {
+      intro: ['La sorcière a emporté Mei Mei, notre chat, en haut de sa tour.', 'Avec ton aimant, monte les seize étages et va le délivrer !'], introGo: 'En route !',
+      fin: ['Tu as ouvert la cage tout en haut de la tour !', 'Mei Mei est libre, et la sorcière s’envole au loin.'], finTitre: 'Fin', finGo: 'Continuer',
+      passer: 'Passer', fini: 'Fini',
+    },
+    en: {
+      intro: ['The witch has carried Mei Mei, our cat, to the top of her tower.', 'With your magnet, climb the sixteen floors and set Mei Mei free!'], introGo: 'Let’s go!',
+      fin: ['You opened the cage at the very top of the tower!', 'Mei Mei is free, and the witch flies far away.'], finTitre: 'The End', finGo: 'Continue',
+      passer: 'Skip', fini: 'Finished',
+    },
+  };
+  const CINE = {
+    intro: { video: (window.CINE || {}).intro, image: 'assets/histoire_debut.webp', titre: null, lignes: 'intro', go: 'introGo' },
+    fin: { video: (window.CINE || {}).fin, image: 'assets/histoire_fin.webp', titre: 'finTitre', lignes: 'fin', go: 'finGo' },
+  };
+  function cinematique(nom, ensuite) {
+    const c = CINE[nom], t = HISTOIRE[LANG], box = $('#cine'), vid = box.querySelector('video'), img = box.querySelector('.fixe'), h2 = box.querySelector('h2');
+    h2.textContent = c.titre ? fr(t[c.titre]) : ''; h2.hidden = !c.titre;
+    box.querySelector('.l1').textContent = fr(t[c.lignes][0]); box.querySelector('.l2').textContent = fr(t[c.lignes][1]);
+    box.querySelector('.go').textContent = fr(t[c.go]); box.querySelector('.passer').textContent = t.passer;
+    img.src = c.image; box.classList.remove('texte'); box.hidden = false;
+    let lu = false;
+    const texte = () => {
+      vid.pause(); box.classList.add('texte');
+      if (!lu) { lu = true; if (LANG === 'fr') speak(t[c.lignes].join(' ')); }
+    };
+    vid.onended = texte; vid.onerror = texte;
+    if (c.video && !REDUCED) { vid.hidden = false; vid.src = c.video; const p = vid.play(); if (p && p.catch) p.catch(texte); }
+    else { vid.hidden = true; vid.removeAttribute('src'); texte(); }
+    box.querySelector('.go').onclick = () => {
+      vid.pause(); vid.removeAttribute('src'); box.hidden = true;
+      try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) { /* ignore */ }
+      if (ensuite) ensuite();
+    };
+    box.querySelector('.passer').onclick = texte;
   }
   function unlockAudio() { const a = ac(); if (a && a.resume) a.resume(); lockLandscape(); }
 
@@ -536,9 +589,10 @@
     }
     if (!progress.done.includes(floor.n)) progress.done.push(floor.n);
     if (floor.n >= progress.floor) { progress.floor = Math.min(TOTAL, floor.n + 1); progress.room = 0; }
+    if (floor.final) progress.fini = true;
     save();
     ludiSalleFinie(room, floor, floor.final ? 'tour' : 'etage');
-    if (floor.final) { stopLoop(); showEnd(); return; }
+    if (floor.final) { if (LUDI) LUDI.fini(); stopLoop(); cinematique('fin', showEnd); return; }
     startFlight();
   }
   // La sorcière arrive par la fenêtre, attrape la cage, et repart avec le chat
@@ -1222,5 +1276,5 @@
     const hot = window.claude && window.claude.hot;
     if (hot && hot.ready) hot.ready(boot); else boot((hot && hot.data) || {});
   });
-  window.__game = { startRoom, startDemo, get world() { return world; }, get demo() { return demo; }, show, openCard, renderTower, takeControl, FLOORS };
+  window.__game = { startRoom, startDemo, get world() { return world; }, get demo() { return demo; }, show, openCard, renderTower, takeControl, FLOORS, cinematique, get progress() { return progress; } };
 })();

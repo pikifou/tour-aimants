@@ -23,6 +23,8 @@ self.addEventListener('fetch', (e) => {
   }
   // la fiche Ludiworld : toujours le réseau, jamais en cache
   if (url.pathname.endsWith('/ludi.json')) return;
+  // les petites vidéos de l'histoire : directement au réseau (lecture par morceaux) ; hors ligne, le jeu montre l'image fixe
+  if (url.pathname.includes('/cine/')) return;
   // le reste : cache d'abord
   e.respondWith(caches.match(req, { ignoreSearch: true }).then((hit) => hit || fetch(req).then((res) => { if (res.ok && url.origin === location.origin) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); } return res; })));
 });

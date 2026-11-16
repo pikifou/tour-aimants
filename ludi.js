@@ -1,5 +1,5 @@
 /*!
- * Ludiworld kit (ludi.js) v0.3.0
+ * Ludiworld kit (ludi.js) v0.4.0
  * Temps de jeu, scores, progression et notions apprises, pour les jeux Ludiworld.
  * N'envoie rien sur le réseau. Ne parle qu'au launcher Ludiworld qui a ouvert le jeu.
  * Spec : https://github.com/pikifou/ludiworld/blob/main/spec/kit.md
@@ -7,7 +7,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '0.3.0';
+  var VERSION = '0.4.0';
   var DEFAULT_LAUNCHERS = ['https://ludiworld.app', 'https://pikifou.github.io'];
   var LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
   var MAX_EVENTS = 300;
@@ -198,6 +198,27 @@
         s.at = now();
         st.data.skills[id] = s;
         record({ kind: 'skill', domain: String(domain), item: item === undefined ? null : item, success: !!success });
+      },
+
+      // Où en est l'enfant dans le jeu : fini() quand le parcours principal est terminé (ça ne s'enlève pas),
+      // complet(x) de 0 à 1 pour ce qui reste en option (mode difficile, médailles, étoiles). Le jeu les montre sur son écran
+      // principal ; Ludiworld les lit pour ranger le jeu et les garde dans le compte. complet() ne redescend jamais.
+      fini: function () {
+        if (!ready('fini')) return;
+        var e = st.data.etat || (st.data.etat = { fini: false, complet: null });
+        if (e.fini) return;
+        e.fini = true; e.at = now(); save();
+        record({ kind: 'etat', fini: true, complet: e.complet });
+      },
+      complet: function (x) {
+        if (!ready('complet')) return;
+        x = Number(x);
+        if (!isFinite(x)) { warn('complet : valeur invalide'); return; }
+        x = Math.max(0, Math.min(1, Math.round(x * 100) / 100));
+        var e = st.data.etat || (st.data.etat = { fini: false, complet: null });
+        if (e.complet !== null && e.complet !== undefined && x <= e.complet) return;
+        e.complet = x; e.at = now(); save();
+        record({ kind: 'etat', fini: !!e.fini, complet: x });
       },
 
       // Moment où l'enfant peut s'arrêter sans rien perdre (fin de niveau, de course, de série).

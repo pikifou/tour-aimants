@@ -10,7 +10,10 @@ def inline(m):
     return src
 
 html = re.sub(r'<!-- INLINE: (\S+) -->', inline, tpl)
-(root / 'index.html').write_text(html, encoding='utf-8')
+# les petites vidéos de l'histoire (cine/) : dans l'aperçu et la version installée ; le fichier unique montre l'image fixe
+CINE_ON = '"intro": "cine/intro.mp4", "fin": "cine/fin.mp4"'
+(root / 'index.html').write_text(html.replace('/*CINE*/', ''), encoding='utf-8')
+html = html.replace('/*CINE*/', CINE_ON)
 
 HEAD = ('<!doctype html><html lang="fr"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">'
@@ -36,6 +39,8 @@ if dist.exists(): shutil.rmtree(dist)
 dist.mkdir(); (dist / 'assets').mkdir()
 assets = sorted(p.name for p in (root / 'assets').iterdir())
 for a in assets: shutil.copy(root / 'assets' / a, dist / 'assets' / a)
+# vidéos hors du cache du service worker (lues par morceaux, au réseau)
+shutil.copytree(root / 'cine', dist / 'cine')
 for f in ['manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png', 'favicon.png']:
     shutil.copy(root / 'pwa' / f, dist / f)
 page = HEAD + PWA + f'<title>{title}</title></head><body>' + body_no_title + '</body></html>'
