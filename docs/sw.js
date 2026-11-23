@@ -1,10 +1,10 @@
 /* Service worker : le jeu entier est mis en cache à l'installation, et joue hors ligne.
-   c6d486bfdc est remplacé à chaque build : nouveau cache, ancien supprimé. */
-const CACHE = 'tour-aimants-c6d486bfdc';
+   041b9505f7 est remplacé à chaque build : nouveau cache, ancien supprimé. */
+const CACHE = 'tour-aimants-041b9505f7';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png', './favicon.png',
-  "./assets/armure.png", "./assets/armure_tas.png", "./assets/chat_assis.png", "./assets/chat_cage.png", "./assets/chat_saute.png", "./assets/epee.png", "./assets/epouvantail.png", "./assets/heros.png", "./assets/heros_helice.png", "./assets/histoire_debut.webp", "./assets/histoire_fin.webp", "./assets/magnetite.png", "./assets/matiere-bois.webp", "./assets/matiere-fer.webp", "./assets/matiere-pierre.webp", "./assets/matiere-verre.webp", "./assets/mur-01.webp", "./assets/mur-02.webp", "./assets/mur-03.webp", "./assets/mur-04.webp", "./assets/mur-05.webp", "./assets/mur-06.webp", "./assets/mur-07.webp", "./assets/mur-08.webp", "./assets/mur-09.webp", "./assets/mur-10.webp", "./assets/mur-11.webp", "./assets/mur-12.webp", "./assets/mur-13.webp", "./assets/mur-14.webp", "./assets/mur-15.webp", "./assets/mur-16.webp", "./assets/sorciere.png", "./assets/sorciere_balai.png", "./assets/sorciere_vol.png", "./assets/tour.jpg"
+  "./assets/armure.png", "./assets/armure_tas.png", "./assets/chat_assis.png", "./assets/chat_cage.png", "./assets/chat_saute.png", "./assets/epee.png", "./assets/epouvantail.png", "./assets/heros.png", "./assets/heros_helice.png", "./assets/histoire_debut.webp", "./assets/histoire_fin.webp", "./assets/magnetite.png", "./assets/matiere-bois.webp", "./assets/matiere-fer.webp", "./assets/matiere-pierre.webp", "./assets/matiere-verre.webp", "./assets/mur-01.webp", "./assets/mur-02.webp", "./assets/mur-03.webp", "./assets/mur-04.webp", "./assets/mur-05.webp", "./assets/mur-06.webp", "./assets/mur-07.webp", "./assets/mur-08.webp", "./assets/mur-09.webp", "./assets/mur-10.webp", "./assets/mur-11.webp", "./assets/mur-12.webp", "./assets/mur-13.webp", "./assets/mur-14.webp", "./assets/mur-15.webp", "./assets/mur-16.webp", "./assets/musique-fin.mp3", "./assets/musique-salles.mp3", "./assets/musique-tour.mp3", "./assets/sorciere.png", "./assets/sorciere_balai.png", "./assets/sorciere_vol.png", "./assets/tour.jpg"
 ];
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

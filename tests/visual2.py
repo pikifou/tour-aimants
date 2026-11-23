@@ -14,13 +14,17 @@ async def drag(page, pts, steps=40, hold=0.0):
 async def main():
     errors = []
     async with async_playwright() as p:
-        browser = await p.chromium.launch()
+        browser = await p.chromium.launch(args=['--mute-audio'])  # navigateur muet ; la voix est remplacée par rien
         page = await browser.new_page(viewport={'width': 1280, 'height': 800})
         page.on('console', lambda m: errors.append(m.text) if m.type == 'error' and 'ERR_TUNNEL' not in m.text else None)
         page.on('pageerror', lambda e: errors.append(str(e)))
+        await page.add_init_script('if (window.speechSynthesis) window.speechSynthesis.speak = () => {};')
         await page.goto(f'file://{ROOT}/preview.html')
         await page.wait_for_function('window.__game && !document.getElementById("title").hidden')
-        await page.click('#btnPlay'); await page.wait_for_timeout(300); await page.screenshot(path=OUT / 'a_tower.png')
+        await page.click('#btnPlay'); await page.wait_for_timeout(300)
+        # une partie neuve commence par l'histoire (intro) : on la passe
+        await page.evaluate("(() => { const c = document.querySelector('#cine'); if (c && !c.hidden) c.querySelector('.go').click(); })()"); await page.wait_for_timeout(300)
+        await page.screenshot(path=OUT / 'a_tower.png')
         await page.click('#btnClimb'); await page.wait_for_timeout(300); await page.click('#btnGo'); await page.wait_for_timeout(2600)
         await page.screenshot(path=OUT / 'b_atelier_demo.png')
         await page.wait_for_timeout(3500)
