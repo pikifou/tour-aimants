@@ -3,7 +3,7 @@
   'use strict';
   const { World, Replay, W, H } = window.Engine;
   const FLOORS = window.FLOORS;
-  const { CARDS, INTRO } = window.CARDS_DATA;
+  const { CARDS, INTRO, SAVOIRS } = window.CARDS_DATA;
   const $ = (s) => document.querySelector(s);
   const fr = (t) => t.replace(/ ([!?:;])/g, ' $1');
   const TOTAL = FLOORS.length;
@@ -144,7 +144,7 @@
   // les fiches et l'histoire du début ; « salles » pendant le jeu ; « fin » pour l'histoire de la fin et l'écran « Bravo ».
   // Elle tourne en boucle sans couture (la fin du morceau se fond dans son début), commence au premier geste de l'enfant,
   // s'arrête quand le jeu est caché ou mis en pause par Ludiworld, et reprend au geste suivant.
-  const PISTES = { title: 'tour', tower: 'tour', card: 'tour', game: 'salles', end: 'fin' };
+  const PISTES = { title: 'tour', tower: 'tour', card: 'tour', savoir: 'tour', game: 'salles', end: 'fin' };
   const VOLUME_MUSIQUE = 0.5, FONDU = 1.5, RACCORD = 4;
   let musiqueVoulue = 'tour', musiquePause = false, geste = false, courante = null, baisse = false, baisseTimer = 0;
   const tampons = new Map();
@@ -212,7 +212,7 @@
   window.__son = () => Object.assign({}, SON);
 
   // ---------- écrans ----------
-  const screens = ['title', 'tower', 'card', 'game', 'end'];
+  const screens = ['title', 'tower', 'card', 'savoir', 'game', 'end'];
   let current = 'title';
   function show(name) {
     if (name !== current) pushScreen(name);
@@ -307,7 +307,7 @@
     installPrompt = null; $('#btnInstall').hidden = true;
   }
   // bouton Retour d'Android : revient à l'écran précédent au lieu de fermer l'appli
-  const BACK = { title: null, tower: 'title', card: 'tower', game: 'tower', end: 'title' };
+  const BACK = { title: null, tower: 'title', card: 'tower', savoir: 'tower', game: 'tower', end: 'title' };
   let ignorePop = false;
   function pushScreen(name) { if (name !== 'title' && history.pushState) { try { history.pushState({ screen: name }, ''); } catch (e) { /* ignore */ } } }
   window.addEventListener('popstate', () => {
@@ -331,7 +331,7 @@
       unlockAudio();
       const neuve = !progress.done.length && !progress.room && progress.floor === 1;
       // une partie qui commence : d'abord l'histoire (la sorcière emporte Mei Mei), puis la tour
-      if (neuve) cinematique('intro', () => { show('tower'); renderTower(); });
+      if (neuve) cinematique('intro', () => montrerSavoir(1, () => { show('tower'); renderTower(); }));
       else { show('tower'); renderTower(); }
     };
     $('#btnReset').onclick = () => { progress = { floor: 1, room: 0, done: [], fini: !!progress.fini }; save(); renderTitle(); };
@@ -391,55 +391,99 @@
   function unlockAudio() { const a = ac(); if (a && a.resume) a.resume(); lockLandscape(); }
 
   // ---------- tour ----------
-  function renderTower() {
-    const list = $('#floors'); list.innerHTML = '';
+  // La tour peinte (tour 65) : un toit, seize étages empilés, une base. Une fenêtre s'allume par étage réussi ;
+  // le héros attend sur le rebord de son étage. Après un étage, il monte jusqu'au suivant, avec les mêmes habits.
+  const ETAGE_H = 261;
+  function renderTower(opts = {}) {
+    const col = $('#towerCol'); col.innerHTML = '';
+    const toit = document.createElement('img'); toit.className = 'toit'; toit.src = 'assets/tour-toit.webp'; toit.alt = ''; col.appendChild(toit);
+    const rows = {};
     for (let n = TOTAL; n >= 1; n--) {
       const f = FLOORS[n - 1];
-      const done = progress.done.includes(n);
-      const cur = n === progress.floor;
-      const locked = !done && !cur;
-      const row = document.createElement('button');
-      row.className = 'floor' + (done ? ' done' : '') + (cur ? ' current' : '') + (locked ? ' locked' : '');
-      row.type = 'button'; row.disabled = locked;
+      const done = progress.done.includes(n), cur = n === progress.floor, locked = !done && !cur;
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'etage' + (done ? ' done' : '') + (cur ? ' current' : '') + (locked ? ' locked' : '');
+      b.disabled = locked; b.setAttribute('aria-label', locked ? `Étage ${n}, pas encore ouvert` : `Étage ${n}, ${f.title}`);
       const dots = f.rooms.map((r, i) => `<i class="${r.kind}${(done || (cur && i < progress.room)) ? ' ok' : ''}"></i>`).join('');
-      row.innerHTML = `<span class="num">${n}</span><span class="name">${locked ? '? ? ?' : f.title}<span class="dots">${dots}</span></span><span class="mark">${done ? '✓' : (cur ? '<img src="assets/chat_cage.png" alt="le chat">' : '')}</span>`;
-      row.onclick = () => openCard(n);
-      list.appendChild(row);
+      b.innerHTML = `<span class="vitre"></span><span class="plaque"><span class="num">${n}</span><span class="nom">${locked ? '? ? ?' : f.title}<span class="dots">${dots}</span></span>${done ? '<span class="coche" aria-hidden="true">✓</span>' : ''}</span>`;
+      b.onclick = () => openCard(n);
+      col.appendChild(b); rows[n] = b;
     }
+    const base = document.createElement('img'); base.className = 'base'; base.src = 'assets/tour-base.webp'; base.alt = ''; col.appendChild(base);
+    // la sorcière et Mei Mei, en haut de la tour
+    if (!progress.fini) {
+      const w = document.createElement('div'); w.className = 'sorciere';
+      w.innerHTML = '<img src="assets/sorciere_vol.png" alt="La sorcière" style="width:150px"><img class="cage" src="assets/chat_cage.png" alt="Mei Mei dans sa cage">';
+      col.appendChild(w);
+    }
+    const heros = document.createElement('img'); heros.className = 'heros'; heros.alt = 'Toi'; heros.src = 'assets/heros.png';
+    col.appendChild(heros);
+    const topOf = (n) => rows[n].offsetTop;
+    const posHeros = (n) => { heros.style.top = (topOf(n) + 204 - 96) + 'px'; };
+    const sc = $('#towerScroll');
+    const centrer = (n, smooth) => { const y = topOf(n) + ETAGE_H / 2 - 400; if (smooth && !REDUCED && sc.scrollTo) sc.scrollTo({ top: y, behavior: 'smooth' }); else sc.scrollTop = y; };
+
     const cur = FLOORS[progress.floor - 1];
     const stepNow = cur.firstStep + Math.min(progress.room, cur.rooms.length - 1);
+    $('#towerTitle').textContent = progress.fini ? 'Mei Mei est libre !' : `Étage ${progress.floor} : ${cur.title}`;
     $('#towerText').textContent = fr(progress.done.length ? `Marche ${stepNow} sur ${STEPS}. La sorcière est montée à l'étage ${progress.floor} avec Mei Mei !` : `${STEPS} marches jusqu'à Mei Mei. Tu es sur la première.`);
-    drawStairs(stepNow);
     const roomLabel = progress.room ? ` (${roomName(cur.rooms[progress.room])})` : '';
     $('#btnClimb').textContent = `Monter à l'étage ${progress.floor}${roomLabel}`;
     $('#btnClimb').onclick = () => openCard(progress.floor);
     $('#btnHome').onclick = () => { show('title'); renderTitle(); };
-    requestAnimationFrame(() => { const c = list.querySelector('.current'); if (c) c.scrollIntoView({ block: 'center' }); });
+
+    const de = opts.monte, vers = progress.floor;
+    requestAnimationFrame(() => {
+      if (de && rows[de] && rows[vers] && de !== vers) {
+        // le héros part de l'étage réussi : sa fenêtre s'allume, puis il s'envole jusqu'au suivant
+        posHeros(de); centrer(de, false);
+        rows[vers].classList.remove('current'); rows[vers].querySelector('.vitre').style.background = 'rgba(8,10,24,.35)';
+        setTimeout(() => {
+          rows[de].classList.add('allume'); etincelles(col, 199, topOf(de) + 100, 14); SFX.reveal();
+        }, 350);
+        setTimeout(() => {
+          heros.classList.add('vole'); posHeros(vers); centrer(vers, true); SFX.whoosh();
+        }, 1200);
+        setTimeout(() => {
+          heros.classList.remove('vole');
+          rows[vers].classList.add('current'); rows[vers].querySelector('.vitre').style.background = '';
+          etincelles(col, 299, topOf(vers) + 180, 10); SFX.room(); pulseButton('#btnClimb');
+        }, 2800);
+      } else { posHeros(vers); centrer(vers, false); }
+    });
   }
-  // Escalier (SVG) : en zigzag, des volées de 10 marches ; le héros sur la marche courante, la cage en haut
-  function drawStairs(stepNow) {
-    const el = $('#stairs'); if (!el) return;
-    const per = 10, flights = Math.ceil(STEPS / per), sw = 36, rise = 9, pad = 24;
-    const Wd = per * sw + pad * 2 + 70, Hd = STEPS * rise + pad * 2 + 90;
-    let out = `<svg viewBox="0 0 ${Wd} ${Hd}" width="${Wd}" height="${Hd}" xmlns="http://www.w3.org/2000/svg">`;
-    const pos = [];
-    for (let i = 0; i < STEPS; i++) {
-      const fl = Math.floor(i / per), j = i % per;
-      const dir = fl % 2 === 0 ? 1 : -1;
-      const x = dir === 1 ? pad + j * sw : pad + (per - 1 - j) * sw;
-      const y = Hd - pad - 50 - i * rise;
-      pos.push({ x, y });
-      const done = i + 1 < stepNow, cur = i + 1 === stepNow;
-      const floorStart = FLOORS.some((f) => f.firstStep === i + 1);
-      out += `<rect x="${x}" y="${y}" width="${sw - 2}" height="${rise + 6}" rx="3" fill="${cur ? '#ffb020' : done ? '#3fbf5a' : '#5a4b7a'}" ${floorStart ? 'stroke="#fff6e6" stroke-width="2"' : 'stroke="#1b1430" stroke-width="1"'}/>`;
+  // des petites étoiles qui jaillissent (écran de la tour)
+  function etincelles(parent, x, y, n) {
+    if (REDUCED) n = 3;
+    for (let i = 0; i < n; i++) {
+      const e = document.createElement('i'); e.className = 'etincelle';
+      const a = Math.random() * Math.PI * 2, d = 50 + Math.random() * 70;
+      e.style.left = x + 'px'; e.style.top = y + 'px'; e.style.setProperty('--dx', Math.cos(a) * d + 'px'); e.style.setProperty('--dy', Math.sin(a) * d + 'px');
+      e.style.animationDelay = (Math.random() * 0.15) + 's';
+      parent.appendChild(e); setTimeout(() => e.remove(), 1200);
     }
-    const p = pos[Math.min(STEPS, stepNow) - 1];
-    out += `<image href="assets/heros.png" x="${p.x + 2}" y="${p.y - 54}" height="58"/>`;
-    const top = pos[STEPS - 1];
-    out += `<image href="assets/chat_cage.png" x="${top.x - 20 + (Math.floor((STEPS - 1) / per) % 2 === 0 ? 40 : -30)}" y="${top.y - 76}" height="76"/>`;
-    out += '</svg>';
-    el.innerHTML = out;
   }
+
+  // ---------- « Le savais-tu ? » (ADR-011) ----------
+  // Le n° n montre, dans la vraie vie, la notion de l'étage n. Il passe juste avant cet étage, une seule fois ; la fiche de l'étage le relit.
+  function montrerSavoir(n, ensuite, force) {
+    const texte = SAVOIRS[n - 1];
+    if (!texte || (!force && (progress.vus || []).includes(n))) { ensuite(); return; }
+    $('#savoirImg').src = `assets/savoir-${String(n).padStart(2, '0')}.webp`;
+    $('#savoirImg').alt = '';
+    $('#savoirTexte').textContent = fr(texte);
+    const f = FLOORS[n - 1];
+    $('#savoirSuite').textContent = force ? '' : fr(`Tu vas t'en servir à l'étage ${n} : ${f.title}.`);
+    $('#btnSavoirLire').onclick = () => speak(texte);
+    $('#btnSavoirOk').onclick = () => {
+      taire();
+      if (!(progress.vus || []).includes(n)) { progress.vus = (progress.vus || []).concat(n); save(); }
+      ensuite();
+    };
+    show('savoir');
+    if (SON.voix) setTimeout(() => { if (current === 'savoir') speak(texte); }, 600);
+  }
+
   function roomName(r) {
     if (r.kind === 'atelier') return 'Atelier';
     if (r.finale) return 'La cage de Mei Mei';
@@ -456,6 +500,8 @@
     $('#btnRead').onclick = () => speak(c.lines.join(' '));
     $('#btnGo').onclick = () => startRoom(n, n === progress.floor ? progress.room : 0);
     $('#btnCardBack').onclick = () => { show('tower'); renderTower(); };
+    const sv = $('#btnSavoir'); sv.hidden = !(progress.vus || []).includes(n);
+    sv.onclick = () => montrerSavoir(n, () => openCard(n), true);
     show('card');
   }
 
@@ -468,6 +514,7 @@
   let demo = null, demoMode = null, demoTimer = 0, bannerT = 0, bannerText = '', bannerSub = '', flashWhite = 0, roomClearT = 0;
   let flight = null;   // { phase: 'in'|'hover'|'out', t, from, to, cageTaken }
   let failAt = 0, meowT = 0;
+  let cheer = null, glowT = 0, bellT = 0;   // la fête du héros après une victoire ; la lueur dorée ; les ondes de la cloche
   const hero = { x: 0, y: 0, face: 1, vx: 0, shown: false };
 
   function layout() {
@@ -517,7 +564,7 @@
   function resetWorld() {
     world = new World(room);
     shake = 0; winAt = 0; idleT = 0; hintUntil = 0; flashes = []; particles = []; fx = {}; witchFx = { t: 0, text: '' }; flashWhite = 0; roomClearT = 0;
-    demo = null; demoMode = null; demoTimer = 0; activePointer = null; flight = null; failAt = 0; meowT = 0;
+    demo = null; demoMode = null; demoTimer = 0; activePointer = null; flight = null; failAt = 0; meowT = 0; cheer = null; glowT = 0; bellT = 0;
   }
   function stopLoop() { cancelAnimationFrame(raf); raf = 0; }
   function renderDots() {
@@ -571,7 +618,7 @@
   function showHint() { $('#hintText').textContent = fr(room.hint); $('#hint').hidden = false; hintUntil = performance.now() + 7000; }
   $('#hint').onclick = () => { $('#hint').hidden = true; };
   function pulseButton(sel) { const b = $(sel); b.classList.remove('pulse'); void b.offsetWidth; b.classList.add('pulse'); }
-  function banner(text, sub, dur) { bannerText = text; bannerSub = sub || ''; bannerT = dur; }
+  function banner(text, sub, dur) { bannerText = text; bannerSub = sub || ''; bannerT = dur; bannerDur = dur; }
 
   // ---------- démo (atelier / Montre-moi) ----------
   function startDemo(mode) {
@@ -653,13 +700,21 @@
     if (bannerT > 0) bannerT -= dt;
     updateHero(dt);
     if (flashWhite > 0) flashWhite -= dt;
+    if (glowT > 0) glowT -= dt;
+    if (cheer) { cheer.t += dt; if (cheer.t > 1.5 || flight) cheer = null; }
+    if (bellT > 0) { bellT -= dt; if (Math.floor(bellT * 4) !== Math.floor((bellT + dt) * 4)) bellRings(); }
     if (witchFx.t > 0) witchFx.t -= dt;
-    for (const k in fx) { fx[k].sq *= Math.exp(-7 * dt); fx[k].pop *= Math.exp(-6 * dt); }
+    for (const k in fx) { fx[k].sq *= Math.exp(-7 * dt); fx[k].pop *= Math.exp(-6 * dt); if (fx[k].hop > 0) fx[k].hop -= dt; }
     updateParticles(dt);
     updateGauge();
-    if (world.won && !winAt && !demo) { winAt = t; shake = 0.4; flashWhite = 0.25; confetti(); if (room.index < floor.rooms.length - 1) banner(room.kind === 'atelier' ? 'Atelier réussi !' : 'Salle réussie !', '', 1.4); }
+    if (world.won && !winAt && !demo) { winAt = t; shake = 0.2; celebrate(); if (room.index < floor.rooms.length - 1) banner(room.kind === 'atelier' ? 'Atelier réussi !' : 'Salle réussie !', '', 1.4); }
     if (winAt > 0 && t - winAt > 1500) { winAt = -1; onWin(); }
-    if (world.failed && !failAt) { failAt = t; shake = 0.5; banner('Ding ding !', 'Le garde a sonné la cloche. On recommence la salle.', 2); SFX.bell(); buzz([80, 60, 80]); }
+    if (world.failed && !failAt) {
+      failAt = t; shake = 0.5; bellT = 1.6; bellRings(); banner('Ding ding !', 'Le garde a sonné la cloche. On recommence la salle.', 2); SFX.bell(); buzz([80, 60, 80]);
+      const al = world.sensors.find((x) => x.type === 'alarm');
+      if (al) { let best = null, bd = 1e9; for (const b of world.bodies) if (b.kind === 'knight' && !b.captured && !b.hidden) { const d = Math.abs(b.x + b.w / 2 - (al.x + al.w / 2)); if (d < bd) { bd = d; best = b; } } if (best) fxOf(best.id).hop = 1.6; }
+      witchReact('Hi hi hi !');
+    }
     if (failAt && t - failAt > 2000) { const wasDemo = !!demo; resetWorld(); buildHud(); if (wasDemo || room.kind === 'atelier') startDemo('loop'); }
     if (meowT > 0) meowT -= dt;
     if (flight) updateFlight(dt);
@@ -683,6 +738,15 @@
     ctx.translate(x, y);                       // la main levée est sur le doigt
     ctx.rotate(lean);
     ctx.scale(hero.face, 1);
+    ctx.drawImage(img, -w * HERO.handX, -h * HERO.handY, w, h);
+    ctx.restore();
+  }
+  function drawCheer() {
+    const img = IMG.heros; if (!img) return;
+    const k = cheer.t, h = HERO.h, w = img.width * h / img.height;
+    const hop = Math.abs(Math.sin(k * 7)) * 34 * Math.max(0, 1 - k / 1.5), squash = 1 + Math.max(0, Math.cos(k * 14)) * 0.06;
+    ctx.save(); ctx.globalAlpha = Math.min(1, (1.5 - k) * 4);
+    ctx.translate(cheer.x, cheer.y - hop); ctx.rotate(Math.sin(k * 9) * 0.12); ctx.scale(cheer.face / squash, squash);
     ctx.drawImage(img, -w * HERO.handX, -h * HERO.handY, w, h);
     ctx.restore();
   }
@@ -719,9 +783,33 @@
       case 'win': if (!demo) { SFX.win(); buzz([30, 40, 60]); witchReact(room.final ? 'Nooon !' : 'Grrr !'); } break;
     }
   }
-  function fxOf(id) { return fx[id] || (fx[id] = { sq: 0, pop: 0, stars: 0 }); }
-  function witchReact(text) { witchFx = { t: 1.2, text }; }
+  function fxOf(id) { return fx[id] || (fx[id] = { sq: 0, pop: 0, stars: 0, hop: 0 }); }
+  const WITCH_T = 1.6;
+  function witchReact(text) { witchFx = { t: WITCH_T, text }; }
+  const easeOutBack = (k) => { const c = 1.7; return 1 + (c + 1) * Math.pow(k - 1, 3) + c * Math.pow(k - 1, 2); };
 
+  function celebrate() {
+    const f = world.finger, x = hero.shown ? hero.x : f.x, y = hero.shown ? hero.y : f.y;
+    cheer = { t: 0, x, y, face: hero.face };
+    glowT = 1.2;
+    starBurst(x, y - 20, 26);
+    for (let i = 0; i < (REDUCED ? 6 : 26); i++) particles.push({ x: 60 + Math.random() * (W - 120), y: H - 40 - Math.random() * 200, vx: (Math.random() - 0.5) * 20, vy: -40 - Math.random() * 70,
+      life: 1.4 + Math.random() * 0.8, t: 0, color: Math.random() < 0.5 ? '#ffe7a3' : '#ffd24a', size: 3 + Math.random() * 3, g: -10, kind: 'mote' });
+    const d = $('#hudDots i.now'); if (d) { d.classList.add('ok', 'gagne'); }
+  }
+  function starBurst(x, y, n) {
+    if (REDUCED) n = Math.min(n, 6);
+    for (let i = 0; i < n; i++) {
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.4, v = 260 + Math.random() * 320;
+      particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.9 + Math.random() * 0.5, t: 0, color: i % 3 ? '#ffd24a' : '#fff1c4', size: 7 + Math.random() * 7, g: 520, kind: 'star', rot: Math.random() * 3, vr: (Math.random() - 0.5) * 8 });
+    }
+  }
+  // les ondes de la cloche, de chaque côté
+  function bellRings() {
+    const s = world.sensors.find((x) => x.type === 'alarm'); if (!s) return;
+    const cx = s.x + s.w / 2, cy = s.y - 90;
+    particles.push({ x: cx, y: cy, vx: 0, vy: 0, life: 0.7, t: 0, color: 'rgba(255,214,120,0.9)', size: 60, g: 0, kind: 'wave' });
+  }
   function onWin() {
     const last = room.index >= floor.rooms.length - 1;
     if (!last) {
@@ -752,7 +840,7 @@
     else if (f.phase === 'hover') {
       if (!f.spoken) { f.spoken = true; speak('Pas si vite ! ' + floor.taunt + ' Encore un étage !', { pitch: 1.5, rate: 1.05 }); }
       if (f.t >= 1.9) { f.phase = 'out'; f.t = 0; f.cageTaken = true; spawnSmoke(f.to.x + 150, f.to.y + 150, 22, 1.3); SFX.whoosh(); shake = 0.2; }
-    } else if (f.phase === 'out' && f.t >= 1.6) { flight = null; stopLoop(); show('tower'); renderTower(); }
+    } else if (f.phase === 'out' && f.t >= 1.6) { flight = null; stopLoop(); const n = floor.n; montrerSavoir(n + 1, () => { show('tower'); renderTower({ monte: n }); }); }
   }
   function flightPos() {
     const f = flight;
@@ -803,7 +891,7 @@
     for (let i = 0; i < n; i++) particles.push({ x: Math.random() * W, y: 60 + Math.random() * 100, vx: (Math.random() - 0.5) * 200, vy: 100 + Math.random() * 200, life: 2.2 + Math.random(), t: 0, color: colors[i % colors.length], size: 8 + Math.random() * 8, g: 300, kind: 'confetti', rot: Math.random() * 6, vr: (Math.random() - 0.5) * 10 });
   }
   function updateParticles(dt) {
-    for (const p of particles) { p.t += dt; p.vy += p.g * dt; p.x += p.vx * dt; p.y += p.vy * dt; if (p.kind === 'confetti') { p.rot += p.vr * dt; p.vx *= Math.exp(-1.5 * dt); } }
+    for (const p of particles) { p.t += dt; p.vy += p.g * dt; p.x += p.vx * dt; p.y += p.vy * dt; if (p.kind === 'confetti' || p.kind === 'star') { p.rot += p.vr * dt; p.vx *= Math.exp(-1.5 * dt); } }
     particles = particles.filter((p) => p.t < p.life);
   }
   function drawParticles() {
@@ -813,10 +901,24 @@
       if (p.kind === 'spark') { ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.size * k, 0, 7); ctx.fill(); }
       else if (p.kind === 'puff') { ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (0.6 + 0.8 * (1 - k)), 0, 7); ctx.fill(); }
       else if (p.kind === 'ring') { ctx.strokeStyle = p.color; ctx.lineWidth = 4 * k; ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (0.3 + 1.2 * (1 - k)), 0, 7); ctx.stroke(); }
+      else if (p.kind === 'star') { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillStyle = p.color; drawStar4(p.size * (0.5 + 0.5 * k)); ctx.restore(); }
+      else if (p.kind === 'mote') { ctx.globalAlpha = Math.max(0, Math.sin(Math.PI * (p.t / p.life))) * 0.9; ctx.fillStyle = p.color; drawStar4At(p.x, p.y, p.size); }
+      else if (p.kind === 'wave') {
+        const r = p.size * (0.5 + 1.6 * (1 - k)); ctx.strokeStyle = p.color; ctx.lineWidth = 6 * k; ctx.lineCap = 'round';
+        for (const side of [-1, 1]) { ctx.beginPath(); ctx.arc(p.x, p.y, r, side < 0 ? Math.PI * 0.75 : -Math.PI * 0.25, side < 0 ? Math.PI * 1.25 : Math.PI * 0.25); ctx.stroke(); }
+      }
       else if (p.kind === 'confetti') { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillStyle = p.color; ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2); ctx.restore(); }
     }
     ctx.globalAlpha = 1;
   }
+
+  // une petite étoile à quatre branches, centrée sur 0,0
+  function drawStar4(r) {
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4, rr2 = i % 2 ? r * 0.32 : r; ctx.lineTo(Math.cos(a) * rr2, Math.sin(a) * rr2); }
+    ctx.closePath(); ctx.fill();
+  }
+  function drawStar4At(x, y, r) { ctx.save(); ctx.translate(x, y); drawStar4(r); ctx.restore(); }
 
   // ---------- dessin ----------
   const C = {
@@ -884,6 +986,7 @@
     if (w.filings) drawFilings();
     drawPulls(time);
     if (w.finger.down && w.tool && w.tool.type !== 'electro') drawHero(w.finger.x, w.finger.y, time);
+    else if (cheer && w.tool && w.tool.type !== 'electro') drawCheer();
     // poussière des corps qui glissent
     slideTick += dt;
     if (slideTick > 0.07) { slideTick = 0; for (const b of w.bodies) if (b.grounded && Math.abs(b.vx) > 90 && !b.hidden && !b.captured) spawnSmoke(b.x + b.w / 2 - Math.sign(b.vx) * b.w / 2, b.y + b.h, 1, 0.5); }
@@ -895,7 +998,11 @@
     drawFlight();
     drawFlashes();
     drawBanner();
-    if (flashWhite > 0) { ctx.fillStyle = `rgba(255,255,255,${flashWhite * 2})`; ctx.fillRect(0, 0, W, H); }
+    if (glowT > 0 && !REDUCED) {
+      const a = Math.min(1, glowT) * 0.35, cx = cheer ? cheer.x : W / 2, cy = cheer ? cheer.y : H / 2;
+      const g = ctx.createRadialGradient(cx, cy, 20, cx, cy, 520); g.addColorStop(0, `rgba(255,214,120,${a})`); g.addColorStop(1, 'rgba(255,214,120,0)');
+      ctx.fillStyle = g; ctx.fillRect(0, 90, W, H - 90);
+    }
     ctx.restore();
   }
 
@@ -980,7 +1087,7 @@
         // dessiné avec la cage (drawCage)
       } else if (s.type === 'alarm') {
         // la cloche : si un garde l'atteint, la salle recommence
-        const cx = s.x + s.w / 2, t = performance.now() / 1000, ring = world.failed ? Math.sin(t * 30) * 0.4 : Math.sin(t * 2) * 0.05;
+        const cx = s.x + s.w / 2, t = performance.now() / 1000, ring = world.failed ? Math.sin(t * 18) * 0.75 * Math.max(0.35, bellT / 1.6) : Math.sin(t * 2) * 0.05;
         if (IMG['obj-cloche']) {
           const ch = 150, cw = ch * IMG['obj-cloche'].width / IMG['obj-cloche'].height;
           ctx.save(); ctx.translate(cx, s.y - 150); ctx.rotate(ring * 0.7);
@@ -1062,12 +1169,26 @@
       }
     }
     if (witchFx.t > 0 && !flight) {
-      // elle crie depuis l'étage du dessus
-      const x = W - 230, y = 130;
-      ctx.save(); ctx.globalAlpha = Math.min(1, witchFx.t * 2);
-      ctx.fillStyle = C.text; rr(x, y, 190, 50, 16); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(x + 150, y); ctx.lineTo(x + 175, y - 22); ctx.lineTo(x + 178, y); ctx.fill();
-      ctx.fillStyle = '#2b1a00'; ctx.font = 'bold 28px Fredoka, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(fr(witchFx.text), x + 95, y + 36);
+      // elle crie depuis l'étage du dessus : elle passe la tête, à l'envers, par le plafond
+      const rides = wi && wi.rides && world.body(wi.rides);
+      const el = WITCH_T - witchFx.t, out = Math.min(1, witchFx.t * 4), inn = REDUCED ? 1 : easeOutBack(Math.min(1, el * 4));
+      const k = Math.min(inn, out), hx = W - 150;
+      let bx = W - 470, by = 120;
+      if (!rides && IMG.sorciere) {
+        const im = IMG.sorciere, h = 300, w = im.width * h / im.height, low = 90 + h * 0.5 * k;
+        ctx.save(); ctx.beginPath(); ctx.rect(0, 90, W, H - 90); ctx.clip();
+        ctx.translate(hx, low); ctx.rotate(Math.PI + Math.sin(el * 10) * 0.08 * out); ctx.drawImage(im, -w / 2, 0, w, h);
+        ctx.restore();
+        by = 90 + h * 0.5 * k - 120;
+        if (by < 110) by = 110;
+      } else if (rides) { bx = rides.x + rides.w / 2 + 50; by = rides.y - 210; }
+      ctx.save(); ctx.globalAlpha = k;
+      ctx.font = 'bold 28px Fredoka, sans-serif';
+      const tw = Math.max(150, ctx.measureText(fr(witchFx.text)).width + 44);
+      bx = Math.max(16, Math.min(W - tw - 16, bx));
+      ctx.fillStyle = C.text; rr(bx, by, tw, 52, 18); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(bx + tw - 30, by + 14); ctx.lineTo(bx + tw + 22, by + 8); ctx.lineTo(bx + tw - 10, by + 36); ctx.fill();
+      ctx.fillStyle = '#5a2a6e'; ctx.textAlign = 'center'; ctx.fillText(fr(witchFx.text), bx + tw / 2, by + 36);
       ctx.restore();
     }
   }
@@ -1083,7 +1204,8 @@
     if (b.grounded && Math.abs(b.vx) > 60 && !b.rail) rot = Math.sin(time * 22) * 0.06 * Math.min(1, Math.abs(b.vx) / 250);
     if (b.tilt) rot = b.tilt;
     if (b.captured) rot = (b.tilt || 0.3) + (b.y - 700) / 250;
-    ctx.translate(cx, by); ctx.rotate(rot); ctx.scale(sx, sy); ctx.translate(-cx, -by);
+    const hop = f && f.hop > 0 ? Math.abs(Math.sin(f.hop * 9)) * 22 : 0;   // le garde qui a sonné la cloche sautille
+    ctx.translate(cx, by - hop); ctx.rotate(rot); ctx.scale(sx, sy); ctx.translate(-cx, -by);
     switch (b.kind) {
       case 'knight':
         if (b.ko) drawImageFit(IMG.armure_tas, { x: b.x - 10, y: b.y - 40, w: b.w + 20, h: b.h + 40 });
@@ -1511,13 +1633,26 @@
     }
     flashes = flashes.filter((f) => f.t > 0);
   }
+  let bannerDur = 0;
   function drawBanner() {
     if (bannerT <= 0) return;
-    const k = Math.min(1, bannerT * 3), slide = (1 - Math.min(1, (3.2 - bannerT) * 4)) * -40;
-    ctx.save(); ctx.globalAlpha = k;
-    ctx.fillStyle = 'rgba(20,16,32,0.85)'; rr(W / 2 - 360, 210 + slide, 720, bannerSub ? 110 : 70, 18); ctx.fill();
-    ctx.fillStyle = C.gold; ctx.font = 'bold 40px Fredoka, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(fr(bannerText), W / 2, 258 + slide);
-    if (bannerSub) { ctx.fillStyle = C.text; ctx.font = 'bold 22px Nunito, sans-serif'; wrapText(fr(bannerSub), W / 2, 296 + slide, 680, 26); }
+    const el = bannerDur - bannerT, k = Math.min(1, bannerT * 3);
+    const drop = REDUCED ? 1 : easeOutBack(Math.min(1, el * 3.2));
+    const y = 200 - (1 - drop) * 70, h = bannerSub ? 118 : 76, w = 740, x = W / 2 - w / 2;
+    ctx.save(); ctx.globalAlpha = k * Math.min(1, el * 6 + 0.2);
+    ctx.translate(W / 2, y); ctx.rotate((1 - drop) * -0.04); ctx.translate(-W / 2, -y);
+    // les deux chaînes qui tiennent la plaque
+    ctx.strokeStyle = 'rgba(214,180,119,0.7)'; ctx.lineWidth = 3; ctx.setLineDash([6, 5]);
+    ctx.beginPath(); ctx.moveTo(x + 70, 92); ctx.lineTo(x + 70, y); ctx.moveTo(x + w - 70, 92); ctx.lineTo(x + w - 70, y); ctx.stroke(); ctx.setLineDash([]);
+    ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 8;
+    ctx.fillStyle = '#3a2350'; rr(x, y, w, h, 14); ctx.fill();
+    ctx.shadowColor = 'transparent';
+    const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, 'rgba(255,255,255,0.10)'); g.addColorStop(1, 'rgba(0,0,0,0.18)');
+    ctx.fillStyle = g; rr(x, y, w, h, 14); ctx.fill();
+    ctx.strokeStyle = '#d6b477'; ctx.lineWidth = 4; rr(x + 6, y + 6, w - 12, h - 12, 10); ctx.stroke();
+    ctx.fillStyle = '#d6b477'; for (const cx of [x + 22, x + w - 22]) drawStar4At(cx, y + h / 2, 9);
+    ctx.fillStyle = '#ffd27a'; ctx.font = 'bold 42px Fredoka, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(fr(bannerText), W / 2, y + 50);
+    if (bannerSub) { ctx.fillStyle = C.text; ctx.font = 'bold 22px Nunito, sans-serif'; wrapText(fr(bannerSub), W / 2, y + 86, 660, 26); }
     ctx.restore();
   }
   function wrapText(text, x, y, maxW, lh) {
@@ -1546,5 +1681,5 @@
     const hot = window.claude && window.claude.hot;
     if (hot && hot.ready) hot.ready(boot); else boot((hot && hot.data) || {});
   });
-  window.__game = { startRoom, startDemo, get world() { return world; }, get demo() { return demo; }, show, openCard, renderTower, takeControl, FLOORS, cinematique, get progress() { return progress; }, sfx: SFX };
+  window.__game = { startRoom, startDemo, get world() { return world; }, get demo() { return demo; }, show, openCard, renderTower, takeControl, FLOORS, cinematique, montrerSavoir, get progress() { return progress; }, sfx: SFX };
 })();

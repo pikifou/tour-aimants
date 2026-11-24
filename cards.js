@@ -78,6 +78,27 @@
     lines: ['Une sorcière maligne a pris Mei Mei, notre chat.', 'Elle l’a caché tout en haut de sa tour.', 'Seize étages pleins de pièges !', 'Toi, tu as un aimant.'],
   };
 
-  const out = { CARDS, INTRO };
+  // « Le savais-tu ? » (ADR-011) : le magnétisme dans la vraie vie. Le n° n se montre juste avant l'étage n
+  // (le 1 après l'histoire du début), la première fois ; l'image est assets/savoir-NN.webp.
+  const SAVOIRS = [
+    "Il y a très longtemps, on a trouvé dans la terre des pierres noires qui attirent le fer : la magnétite. C'est un aimant tout naturel !",
+    "Au centre de tri, un gros aimant attrape les boîtes de conserve en fer. Les canettes en aluminium ne collent pas : elles continuent leur chemin.",
+    "Pour nettoyer la vitre d'un aquarium sans se mouiller, on prend deux aimants : un dedans, un dehors. Celui du dehors tire celui du dedans à travers le verre.",
+    "Au jeu de la pêche à la ligne, un petit aimant pend au bout du fil. Il soulève les poissons, qui ont un bout de fer dans la bouche.",
+    "Les wagons des petits trains en bois s'accrochent avec des aimants. Retourne un wagon : les mêmes pôles se retrouvent face à face, et il repousse l'autre !",
+    "Sur le frigo, un aimant tient bien une feuille. Mets-en dix : il glisse ! Plus l'aimant est loin du fer, moins il tire.",
+    "Cet aimant a la forme du fer qu'on cloue sous le sabot des chevaux. Plié comme ça, ses deux pôles sont côte à côte : ensemble, ils tirent plus fort.",
+    "Accroche un trombone à un aimant, puis un autre trombone au premier, et encore un… Chaque trombone devient un petit aimant : tu fais une chaîne ! Essaie à la maison.",
+    "Un aimant attire un trombone à travers une table en bois. Mais glisse entre les deux le couvercle d'une boîte en fer : le fer garde la force pour lui.",
+    "Les tournevis des bricoleurs sont souvent aimantés : la vis reste collée au bout et ne tombe pas. On les aimante en les frottant sur un aimant, comme ton clou.",
+    "À la casse, une grue porte un énorme électroaimant. Courant allumé : il soulève une voiture entière. Courant coupé : la voiture retombe.",
+    "Dans le haut-parleur de ta tablette, il y a une bobine de fil et un aimant. Le courant fait trembler la bobine très vite… et ce tremblement, c'est le son que tu entends !",
+    "La Terre est un aimant géant. Les randonneurs suivent leur boussole, et certains oiseaux sentent eux aussi ce grand aimant pour trouver leur chemin pendant leurs voyages.",
+    "Tout près des pôles de la Terre, le ciel s'allume parfois en vert et en rose : ce sont les aurores polaires. Le grand aimant de la Terre y guide de minuscules grains venus du Soleil.",
+    "Il y a des aimants partout dans une maison : sur le frigo, dans les portes de placard, dans les haut-parleurs, dans les jouets… Tu en trouves combien chez toi ?",
+    "Au Japon, un train flotte au-dessus de sa voie : des aimants très puissants le repoussent vers le haut. Il file à plus de 500 kilomètres à l'heure !"
+  ];
+
+  const out = { CARDS, INTRO, SAVOIRS };
   if (typeof module !== 'undefined' && module.exports) module.exports = out; else root.CARDS_DATA = out;
 })(typeof window !== 'undefined' ? window : globalThis);

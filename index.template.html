@@ -24,7 +24,8 @@
   @keyframes pulse { 0% { transform: scale(1) } 40% { transform: scale(1.12) } 100% { transform: scale(1) } }
   @keyframes wiggle { 0%, 100% { transform: rotate(0) } 25% { transform: rotate(-4deg) } 75% { transform: rotate(4deg) } }
   @keyframes bob { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-10px) } }
-  @media (prefers-reduced-motion: reduce) { .screen.in, #intro p, #cardText p, .floor.current, button.pulse, .floor.current .mark img, #end img { animation: none !important; } }
+  @media (prefers-reduced-motion: reduce) { .screen.in, #intro p, #cardText p, .floor.current, button.pulse, .floor.current .mark img, #end img, .cardBox, #savoir .image, #savoirTexte,
+    .etage .vitre, .etincelle, #towerCol .sorciere, #end .feux i, .ciel::after, #hudDots i.gagne { animation: none !important; } #towerCol .heros.vole { transition: none !important; } }
   h1, h2, h3 { font-family: var(--display); font-weight: 700; margin: 0; text-wrap: balance; }
   button { font-family: var(--display); font-weight: 600; font-size: 26px; color: var(--accent-ink); background: var(--accent); border: 0; border-radius: 999px;
     padding: 14px 30px; cursor: pointer; box-shadow: 0 4px 0 #b57700; touch-action: manipulation; transition: transform .08s ease-out, filter .15s; }
@@ -45,8 +46,57 @@
   #intro { background: rgba(26,36,56,.8); border-radius: 18px; padding: 18px 24px; max-width: 500px; text-align: left; font-size: 28px; font-weight: 800; line-height: 1.4; }
   #intro p { margin: 4px 0; animation: lineIn .5s ease-out both; }
 
-  /* tour */
-  #tower { flex-direction: row; gap: 40px; padding: 20px 40px; }
+  /* le ciel de nuit (tour, fin) : un dégradé, une lune et des étoiles qui scintillent */
+  .ciel { background:
+      radial-gradient(circle at 86% 14%, #fff4d6 0 36px, rgba(255,240,200,.28) 38px, rgba(255,240,200,.08) 70px, rgba(255,240,200,0) 120px),
+      linear-gradient(180deg, #121733 0%, #1f2147 55%, #33264f 100%); }
+  .ciel::before, .ciel::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+    background-image: radial-gradient(2px 2px at 10% 20%, #fff 50%, transparent 51%), radial-gradient(2px 2px at 30% 70%, #fff 50%, transparent 51%),
+      radial-gradient(1.5px 1.5px at 55% 35%, #fff 50%, transparent 51%), radial-gradient(2px 2px at 72% 58%, #ffe9b0 50%, transparent 51%),
+      radial-gradient(1.5px 1.5px at 90% 80%, #fff 50%, transparent 51%), radial-gradient(2px 2px at 45% 88%, #fff 50%, transparent 51%);
+    background-size: 320px 300px; opacity: .8; }
+  .ciel::after { background-size: 470px 410px; background-position: 120px 60px; animation: scintille 3.2s ease-in-out infinite alternate; }
+  @keyframes scintille { from { opacity: .25 } to { opacity: .9 } }
+
+  /* tour : la tour peinte, empilée par le code (un toit, seize étages, une base) */
+  #tower { display: block; padding: 0; }
+  #towerScroll { position: absolute; left: 30px; top: 0; width: 680px; height: 800px; overflow-y: auto; scrollbar-width: none; touch-action: pan-y; z-index: 1; }
+  #towerScroll::-webkit-scrollbar { display: none; }
+  #towerCol { position: relative; width: 680px; padding: 150px 0 0; }
+  #towerCol .toit { display: block; width: 377px; height: 463px; margin-left: 31px; position: relative; z-index: 2; margin-bottom: -6px; }
+  #towerCol .base { display: block; width: 366px; height: 267px; margin-left: 36px; margin-top: -3px; }
+  .etage { position: relative; width: 300px; height: 262px; margin-left: 69px; margin-top: -1px; background: url(assets/tour-etage.webp) center/100% 100% no-repeat;
+    border: 0; padding: 0; border-radius: 0; box-shadow: none; display: block; font: inherit; color: inherit; cursor: pointer; }
+  .etage:disabled { opacity: 1; cursor: default; }
+  .etage:active { transform: none; box-shadow: none; }
+  .etage .vitre { position: absolute; left: 130px; top: 55px; width: 43px; height: 88px; border-radius: 22px 22px 2px 2px; background: rgba(8,10,24,.35); transition: background .6s, box-shadow .6s; }
+  .etage.done .vitre, .etage.current .vitre { background: radial-gradient(ellipse at 50% 60%, #fff0b8 0%, #ffc84a 55%, #e08a1a 100%); box-shadow: 0 0 24px 6px rgba(255,190,70,.55); }
+  .etage.current .vitre { animation: vacille 1.8s ease-in-out infinite alternate; }
+  @keyframes vacille { from { filter: brightness(.9) } to { filter: brightness(1.15) } }
+  .etage.allume .vitre { animation: allume 1s ease-out both; }
+  @keyframes allume { 0% { filter: brightness(.3); transform: scale(.9) } 50% { filter: brightness(1.8); transform: scale(1.12) } 100% { filter: none; transform: none } }
+  .etage .plaque { position: absolute; left: 318px; top: 86px; display: flex; align-items: center; gap: 12px; white-space: nowrap; text-align: left;
+    background: rgba(26,22,48,.82); border-radius: 6px 16px 16px 6px; padding: 8px 18px 8px 10px; box-shadow: inset 0 0 0 2px #4a3d6a; }
+  .etage .num { font-family: var(--display); font-size: 26px; width: 38px; height: 38px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+    background: #3a2350; color: #d6b477; box-shadow: inset 0 0 0 2px #d6b477; }
+  .etage .nom { font-family: var(--body); font-weight: 800; font-size: 22px; color: var(--fg); display: flex; flex-direction: column; gap: 4px; }
+  .etage .coche { font-size: 26px; color: #ffd27a; }
+  .etage.current .plaque { background: var(--accent); box-shadow: 0 0 0 4px #ffd27a, 0 6px 20px rgba(255,176,32,.5); }
+  .etage.current .nom { color: var(--accent-ink); }
+  .etage.current .num { background: var(--accent-ink); }
+  .etage.locked .plaque { opacity: .55; }
+  .etage.current .dots i { background: rgba(0,0,0,0.2); } .etage.current .dots i.ok { background: #1f7a33; }
+  #towerCol .heros { position: absolute; height: 96px; z-index: 3; left: 268px; pointer-events: none; filter: drop-shadow(0 4px 4px rgba(0,0,0,.45)); }
+  #towerCol .heros.vole { transition: top 1.5s cubic-bezier(.45,.05,.4,1); transform: rotate(-8deg); }
+  #towerCol .sorciere { position: absolute; left: 330px; top: 40px; width: 230px; z-index: 3; pointer-events: none; animation: bob 2.6s ease-in-out infinite; }
+  #towerCol .sorciere img { display: block; }
+  #towerCol .sorciere .cage { width: 84px; margin: -48px 0 0 64px; }
+  #towerSide { position: absolute; right: 60px; top: 0; bottom: 0; width: 470px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; z-index: 2; }
+  #towerSide h2 { font-size: 46px; color: #ffe1a2; text-align: center; text-shadow: 0 4px 16px rgba(0,0,0,.5); }
+  #towerSide p { margin: 0; font-size: 26px; font-weight: 800; text-align: center; color: var(--fg); text-shadow: 0 2px 8px rgba(0,0,0,.6); }
+  .etincelle { position: absolute; width: 14px; height: 14px; z-index: 4; pointer-events: none; background: #ffe7a3;
+    clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); animation: etincelle .9s ease-out forwards; }
+  @keyframes etincelle { from { transform: translate(0,0) scale(1); opacity: 1 } to { transform: translate(var(--dx), var(--dy)) scale(.3) rotate(180deg); opacity: 0 } }
   #floors { display: flex; flex-direction: column; gap: 4px; width: 560px; }
   .floor { display: grid; grid-template-columns: 50px 1fr 60px; align-items: center; gap: 12px; text-align: left; border-radius: 12px; padding: 4px 16px;
     background: var(--panel); color: var(--fg); box-shadow: inset 0 0 0 2px #4a3d6a; font-size: 21px; min-height: 40px; }
@@ -68,12 +118,20 @@
   #towerSide p { margin: 0; font-size: 24px; font-weight: 800; text-align: center; color: var(--muted); }
 
   /* fiche */
-  .cardBox { background: var(--panel); border-radius: 30px; padding: 36px 48px; display: grid; grid-template-columns: 1.15fr 1fr; gap: 40px; align-items: center; width: 1120px; box-sizing: border-box; box-shadow: 0 10px 40px rgba(0,0,0,0.4); }
-  .cardBox .eyebrow { font-family: var(--display); color: var(--accent); font-size: 22px; letter-spacing: 0.08em; text-transform: uppercase; }
-  .cardBox h2 { font-size: 54px; margin-bottom: 10px; }
+  #card { background: radial-gradient(ellipse at 50% 40%, #2e2a52 0%, #171a33 75%); }
+  .cardBox { position: relative; color: #3a2216; background: radial-gradient(ellipse at 50% 45%, #fbf1d8 0%, #f1dfb8 70%, #e2c793 100%);
+    border-radius: 10px 26px 26px 10px; padding: 40px 52px 40px 70px; display: grid; grid-template-columns: 1.15fr 1fr; gap: 40px; align-items: center; width: 1120px; box-sizing: border-box;
+    box-shadow: inset 18px 0 22px -14px rgba(90,50,20,.45), inset 0 0 0 3px #c9a35e, inset 0 0 0 9px #f1dfb8, inset 0 0 0 11px #c9a35e, 0 18px 50px rgba(0,0,0,.55);
+    animation: pageIn .5s cubic-bezier(.2,.8,.3,1.2) both; transform-origin: left center; }
+  @keyframes pageIn { from { opacity: 0; transform: perspective(1400px) rotateY(-24deg) } to { opacity: 1; transform: none } }
+  .cardBox::before { content: ''; position: absolute; left: 16px; top: 30px; bottom: 30px; width: 6px; border-radius: 3px; background: repeating-linear-gradient(#a7773d 0 18px, transparent 18px 30px); opacity: .55; }
+  .cardBox .eyebrow { font-family: var(--display); color: #a3402e; font-size: 22px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .cardBox h2 { font-size: 54px; margin-bottom: 10px; color: #3a2350; }
+  .cardBox button.ghost { background: #3a2350; color: #fff3dc; }
+  #btnSavoir { background: #2f6f8f; color: #fff3dc; box-shadow: 0 4px 0 #1b4257; }
   #cardText { font-size: 38px; font-weight: 800; line-height: 1.45; }
   #cardText p { margin: 3px 0; animation: lineIn .5s ease-out both; }
-  #cardSvg { background: #fff6e6; border-radius: 20px; padding: 12px; }
+  #cardSvg { background: #fff8ea; border-radius: 14px; padding: 12px; box-shadow: inset 0 0 0 2px #c9a35e, 0 6px 16px rgba(90,50,20,.25); transform: rotate(1.2deg); }
   #cardSvg svg { width: 100%; height: auto; display: block; }
 
   /* jeu */
@@ -88,7 +146,11 @@
   #hudDots i.now { background: var(--accent); box-shadow: 0 0 0 3px rgba(255,176,32,0.35); }
   #hudTools { display: flex; gap: 8px; }
   #hud button { font-size: 20px; padding: 10px 18px; box-shadow: 0 3px 0 #b57700; display: inline-flex; align-items: center; gap: 8px; }
-  #hud button.ghost { box-shadow: 0 3px 0 #1a1230; }
+  #hud { background: linear-gradient(180deg, #2a2148 0%, #1d1a36 100%); }
+  #hud button.ghost { background: #3a2350; color: #ffe1a2; box-shadow: 0 3px 0 #120c22, inset 0 0 0 2px #b8955a; }
+  #btnSonHud, #btnFullHud, #btnHint, #btnRestart, #btnTower { width: 58px; height: 58px; padding: 0 !important; justify-content: center; font-size: 26px !important; }
+  #hudDots i.gagne { animation: gagne .6s cubic-bezier(.3,1.6,.5,1) both; }
+  @keyframes gagne { 0% { transform: scale(1) } 40% { transform: scale(1.9) } 100% { transform: scale(1) } }
   #hud button.tool { background: var(--panel-2); color: var(--fg); box-shadow: 0 3px 0 #1a1230; }
   #hud button.tool.on { background: var(--sky); color: #06243a; box-shadow: 0 3px 0 #2a7aa8; }
   #hud .spacer { flex: 1; }
@@ -108,7 +170,26 @@
     max-width: 900px; box-shadow: 0 8px 30px rgba(0,0,0,0.5); cursor: pointer; }
   #hint::after { content: ''; position: absolute; left: 50%; bottom: -12px; border: 12px solid transparent; border-top-color: var(--fg); border-bottom: 0; transform: translateX(-50%); }
 
+  /* « Le savais-tu ? » : une grande image et deux ou trois phrases */
+  #savoir { flex-direction: row; gap: 48px; padding: 40px 60px; background: radial-gradient(ellipse at 30% 40%, #2e2a52 0%, #171a33 75%); }
+  #savoir .image { width: 640px; height: 480px; flex: none; border-radius: 10px; object-fit: cover; box-shadow: 0 0 0 6px #f1dfb8, 0 0 0 9px #c9a35e, 0 20px 50px rgba(0,0,0,.6);
+    transform: rotate(-1.5deg); animation: photoIn .6s cubic-bezier(.2,.8,.3,1.25) both; }
+  @keyframes photoIn { from { opacity: 0; transform: rotate(-8deg) scale(.85) } to { opacity: 1; transform: rotate(-1.5deg) } }
+  #savoir .texte { display: flex; flex-direction: column; gap: 18px; max-width: 470px; }
+  #savoir .eyebrow { display: inline-flex; align-items: center; gap: 12px; font-family: var(--display); font-weight: 700; font-size: 40px; color: #ffd27a; }
+  #savoir .eyebrow svg { flex: none; }
+  #savoirTexte { font-size: 31px; font-weight: 800; line-height: 1.38; margin: 0; animation: lineIn .5s .25s ease-out both; }
+  #savoirSuite { margin: 0; font-size: 22px; font-weight: 800; color: var(--muted); }
+  #savoir .row { justify-content: flex-start; }
+
   /* fin */
+  #end { overflow: hidden; }
+  #end > * { position: relative; z-index: 1; }
+  #end .feux { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+  #end .feux i { position: absolute; width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 0 currentColor;
+    animation: feu 2.4s ease-out infinite; }
+  @keyframes feu { 0% { transform: scale(.2); opacity: 0; box-shadow: 0 -70px 0 -4px currentColor, 60px -40px 0 -4px currentColor, 70px 20px 0 -4px currentColor, 0 70px 0 -4px currentColor, -60px 40px 0 -4px currentColor, -70px -20px 0 -4px currentColor; }
+    15% { opacity: 1 } 100% { transform: scale(1.4); opacity: 0; box-shadow: 0 -70px 0 -4px currentColor, 60px -40px 0 -4px currentColor, 70px 20px 0 -4px currentColor, 0 70px 0 -4px currentColor, -60px 40px 0 -4px currentColor, -70px -20px 0 -4px currentColor; } }
   #end img { height: 400px; width: auto; animation: bob 2.4s ease-in-out infinite; }
   #end h2 { font-size: 70px; color: var(--accent); }
   #end p { font-size: 28px; font-weight: 800; text-align: center; margin: 0; }
@@ -182,10 +263,10 @@
     <div id="iosHint" hidden>Pour l'installer : bouton Partager <span class="share">⎙</span> puis « Sur l'écran d'accueil »</div>
   </section>
 
-  <section id="tower" class="screen" hidden>
-    <div id="floors" role="list"></div>
+  <section id="tower" class="screen ciel" hidden>
+    <div id="towerScroll"><div id="towerCol"></div></div>
     <div id="towerSide">
-      <div id="stairs" aria-label="Les 40 marches"></div>
+      <h2 id="towerTitle"></h2>
       <p id="towerText"></p>
       <button id="btnClimb" type="button">Monter</button>
       <button id="btnHome" class="ghost" type="button">Accueil</button>
@@ -201,6 +282,7 @@
         <div class="row" style="justify-content:flex-start; margin-top:22px">
           <button id="btnRead" class="ghost" type="button">🔊 Écouter</button>
           <button id="btnGo" type="button">C'est parti !</button>
+          <button id="btnSavoir" type="button" hidden>Le savais-tu ?</button>
           <button id="btnCardBack" class="ghost" type="button">Retour</button>
         </div>
       </div>
@@ -229,7 +311,20 @@
     <div id="hint" hidden><span id="hintText"></span></div>
   </section>
 
-  <section id="end" class="screen" hidden>
+  <section id="savoir" class="screen" hidden>
+    <img class="image" id="savoirImg" alt="">
+    <div class="texte">
+      <div class="eyebrow"><svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true"><path d="M14 8h10v18l6 10a5 5 0 0 1-4 4H12a5 5 0 0 1-4-4l6-10z" fill="#2f6fd6"/><path d="M14 8h10v4H14z" fill="#e0453a"/><circle cx="34" cy="10" r="3" fill="#ffd27a"/><circle cx="38" cy="20" r="2" fill="#ffd27a"/></svg><span>Le savais-tu ?</span></div>
+      <p id="savoirTexte"></p>
+      <p id="savoirSuite"></p>
+      <div class="row">
+        <button id="btnSavoirLire" class="ghost" type="button">🔊 Écouter</button>
+        <button id="btnSavoirOk" type="button">Continuer</button>
+      </div>
+    </div>
+  </section>
+  <section id="end" class="screen ciel" hidden>
+    <div class="feux" aria-hidden="true"><i style="left:18%;top:22%;color:#ffd27a"></i><i style="left:78%;top:30%;color:#7ad3ff;animation-delay:.8s"></i><i style="left:30%;top:62%;color:#ff9ec4;animation-delay:1.5s"></i><i style="left:66%;top:68%;color:#ffe7a3;animation-delay:.4s"></i><i style="left:50%;top:14%;color:#b7f0a0;animation-delay:1.9s"></i></div>
     <img src="assets/chat_saute.png" alt="Le chat libre">
     <h2>Bravo !</h2>
     <p>Tu as délivré Mei Mei.<br>Seize étages, et la sorcière est partie.</p>
